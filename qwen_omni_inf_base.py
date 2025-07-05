@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 from PIL import Image
 import torch
 
-from transformers import Qwen2_5OmniThinkerForConditionalGeneration, Qwen2_5OmniProcessor
+from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 from qwen_omni_utils import process_mm_info
 
 
@@ -16,11 +16,11 @@ class QwenOmniInference:
     def __init__(self, model_name: str = "Qwen/Qwen2.5-Omni-3B", device_map: str = "auto"):
 
         print(f"Loading model: {model_name}")
-        self.model = Qwen2_5OmniThinkerForConditionalGeneration.from_pretrained(
+        self.model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
             model_name,
-            torch_dtype="auto",
+            torch_dtype=torch.bfloat16,
             device_map=device_map,
-            trust_remote_code=True
+            # attn_implementation="flash_attention_2",
         )
         
         self.processor = Qwen2_5OmniProcessor.from_pretrained(model_name)
@@ -72,59 +72,40 @@ class QwenOmniInference:
 
         conversation = self.create_conversation(text_input, image_paths)
         
-        # Process inputs
-        inputs = self.processor.apply_chat_template(
+        text_prompt = self.processor.apply_chat_template(
             conversation, 
             add_generation_prompt=True, 
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-            video_fps=1,
-            padding=True,
-            use_audio_in_video=False,
+            tokenize=False,
         )
         
         # # Process multimedia info
-        # audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)
+        audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)
         
         # # Prepare model inputs
-        # inputs = self.processor(
-        #     text=text,
-        #     audio=audios,
-        #     images=images,
-        #     videos=videos,
-        #     return_tensors="pt",
-        #     padding=True,
-        #     use_audio_in_video=False
-        # )
+        inputs = self.processor(
+            text=text_prompt,
+            audio=audios,
+            images=images,
+            videos=videos,
+            return_tensors="pt",
+            padding=True,
+            use_audio_in_video=False
+        )
         
-        inputs = inputs.to(self.model.device)
-        text = ""
+        inputs = inputs.to(self.model.device).to(self.model.dtype)
         # Generate response (text only, no audio)
         with torch.no_grad():
             text_ids = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
+                use_audio_in_video=False,
                 # do_sample=True,
                 # temperature=temperature,
-                # # return_audio=False,  # Disable audio output
-                use_audio_in_video=False
+                return_audio=False,  # Disable audio output
             )
 
-            text = self.processor.batch_decode(text_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        text = self.processor.batch_decode(text_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         
-        # # Decode response
-        # response = self.processor.batch_decode(
-        #     text_ids, 
-        #     skip_special_tokens=True, 
-        #     clean_up_tokenization_spaces=False
-        # )[0]
-        
-        # # Extract only the assistant's response
-        # if "<|im_start|>assistant\n" in response:
-        #     response = response.split("<|im_start|>assistant\n")[-1]
-        
-        # return response.strip()
         return text
 
 
