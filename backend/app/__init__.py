@@ -23,7 +23,9 @@ def create_app():
          origins=["http://localhost:3000", "http://localhost:3001"], 
          supports_credentials=True)
     
+    # Load VLM service
     from app.vlm_client import get_vlm_service
+    
     vlm_service = get_vlm_service()
     
     if vlm_service.load_model():
@@ -31,6 +33,17 @@ def create_app():
     else:
         logger.error("Failed to load VLM model")
         logger.warning("The app will start but can't use VLM")
+    
+    # Load transcription service
+    from app.trans_client import get_transcription_service
+    
+    trans_service = get_transcription_service()
+    
+    if trans_service.load_model():
+        logger.info("Transcription model loaded successfully")
+    else:
+        logger.error("Failed to load transcription model")
+        logger.warning("The app will start but can't use transcription")
     
     from app.routes import register_routes
     register_routes(app)

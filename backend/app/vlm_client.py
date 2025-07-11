@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 from threading import Lock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vlm_service import QwenOmniVLMService
+from vlm_service import Gemma3VLMService
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class VLMClient:
                 return True
                 
             try:
-                self.vlm_service = QwenOmniVLMService()
+                self.vlm_service = Gemma3VLMService()
                 if self.vlm_service.load_model():
                     self.is_model_loaded = True
                     logger.info("VLM model loaded successfully")
@@ -52,7 +52,7 @@ class VLMClient:
                 "model_name": "Not loaded",
                 "is_loaded": False,
                 "supports_images": False,
-                "supports_audio": False,
+    
                 "supports_video": False,
             }
         

@@ -36,8 +36,8 @@ export interface GenerateResponse {
 export interface HealthResponse {
   status: string;
   service: string;
-  model_loaded: boolean;
-  model_info: any;
+  vlm_model_loaded: boolean;
+  vlm_model_info: any;
 }
 
 export interface ModelInfo {
@@ -46,9 +46,27 @@ export interface ModelInfo {
   device_map: string;
   is_loaded: boolean;
   supports_images: boolean;
-  supports_audio: boolean;
   supports_video: boolean;
 }
+
+export interface TranscriptionResponse {
+  status: string;
+  transcription_text: string;
+  transcription_chunks?: any[];
+  mp3_filename?: string;
+  original_filename: string;
+  return_timestamps: boolean;
+}
+
+export interface TranscriptionModelInfo {
+  model_name: string;
+  device: string;
+  is_loaded: boolean;
+  supports_audio: boolean;
+  supported_formats: string[];
+}
+
+
 
 class ApiService {
   // Health check
@@ -99,6 +117,33 @@ class ApiService {
     const response = await api.post('/model/reload');
     return response.data;
   }
+
+  // Transcription API methods
+  async getTranscriptionModelInfo(): Promise<TranscriptionModelInfo> {
+    const response = await api.get('/transcription/model/info');
+    return response.data;
+  }
+
+  async reloadTranscriptionModel(): Promise<{ status: string; message: string }> {
+    const response = await api.post('/transcription/model/reload');
+    return response.data;
+  }
+
+  async uploadAndTranscribe(audioFile: File, returnTimestamps: boolean = false): Promise<TranscriptionResponse> {
+    const formData = new FormData();
+    formData.append('file', audioFile);
+    formData.append('return_timestamps', returnTimestamps.toString());
+    formData.append('keep_mp3', 'false'); // Don't keep MP3 files to save storage
+
+    const response = await api.post('/transcription/upload_and_transcribe', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, // 2 minutes timeout for transcription
+    });
+    return response.data;
+  }
+
 }
 
 export const apiService = new ApiService();

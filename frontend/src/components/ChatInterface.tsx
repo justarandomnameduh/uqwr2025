@@ -12,6 +12,7 @@ const ChatInterface: React.FC = () => {
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<UploadedImage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +50,12 @@ const ChatInterface: React.FC = () => {
   const handleSendMessage = async (text: string, imagesToSend: UploadedImage[]) => {
     if (!text.trim() && imagesToSend.length === 0) return;
 
+    const messageContent = text;
+
     const userMessage: Message = {
       id: uuidv4(),
       type: 'user',
-      content: text,
+      content: messageContent,
       images: imagesToSend.map(img => img.uploadedPath || ''),
       timestamp: new Date(),
     };
@@ -178,8 +181,22 @@ const ChatInterface: React.FC = () => {
     setSelectedImages([]);
   };
 
+  const handleAudioLoadingChange = (isLoading: boolean) => {
+    setIsAudioLoading(isLoading);
+  };
+
   return (
     <div className="chat-container">
+      {/* Loading Overlay */}
+      {isAudioLoading && (
+        <div className="audio-loading-overlay">
+          <div className="audio-loading-spinner">
+            <div className="spinner"></div>
+            <div className="loading-text">Processing audio...</div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-content">
@@ -205,7 +222,7 @@ const ChatInterface: React.FC = () => {
       </div>
 
       {/* Main content */}
-      <div className="chat-main">
+      <div className={`chat-main ${isAudioLoading ? 'audio-loading' : ''}`}>
         {/* Chat area */}
         <div className="chat-area">
           <MessageList 
@@ -219,6 +236,7 @@ const ChatInterface: React.FC = () => {
             onSendMessage={handleSendMessage}
             selectedImages={selectedImages}
             onRemoveSelectedImage={toggleImageSelection}
+            onAudioLoadingChange={handleAudioLoadingChange}
             isGenerating={isGenerating}
             disabled={!isConnected}
           />

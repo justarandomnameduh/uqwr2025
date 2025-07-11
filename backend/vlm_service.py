@@ -2,11 +2,11 @@
 
 import os
 import torch
+import requests
 import gc
 import logging
 from typing import List, Optional, Dict, Any
-from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
-from qwen_omni_utils import process_mm_info
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration
 from PIL import Image
 import time
 
@@ -16,8 +16,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class QwenOmniVLMService:
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-Omni-3B", device_map: str = "auto"):
+class Gemma3VLMService:
+    def __init__(self, model_name: str = "google/gemma-3-4b-it", device_map: str = "auto"):
         self.model_name = model_name
         self.device_map = device_map
         self.model = None
@@ -28,7 +28,7 @@ class QwenOmniVLMService:
         logger.info(f"Using device: {self.device}")
         
         self.system_prompt = (
-            "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable of perceiving auditory and visual inputs, as well as generating text and speech."
+            "You are a helpful assistant."
         )
         
     def load_model(self) -> bool:
@@ -37,21 +37,19 @@ class QwenOmniVLMService:
             return True
             
         try:
-            start_time = time.time()
             logger.info(f"Loading model: {self.model_name}")
             
-            self.model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.bfloat16,
+            # Load model and processor directly
+            self.model = Gemma3ForConditionalGeneration.from_pretrained(
+                self.model_name, 
                 device_map=self.device_map,
-                # attn_implementation="flash_attention_2",  # Uncomment if needed
-            )
+                torch_dtype=torch.bfloat16 if self.device == "cuda" else torch.float32,
+            ).eval()
             
-            self.processor = Qwen2_5OmniProcessor.from_pretrained(self.model_name)
+            self.processor = AutoProcessor.from_pretrained(self.model_name)
             
             self.is_loaded = True
-            load_time = time.time() - start_time
-            logger.info(f"Model loaded successfully in {load_time:.2f} seconds")
+            logger.info(f"Model loaded successfully.")
             return True
             
         except Exception as e:
@@ -63,16 +61,12 @@ class QwenOmniVLMService:
         if self.model is not None:
             del self.model
             self.model = None
-        
+            
         if self.processor is not None:
             del self.processor
             self.processor = None
         
         self.is_loaded = False
-        gc.collect()
-        
-        if self.device == "cuda":
-            torch.cuda.empty_cache()
         
         logger.info("Model cleanup completed")
     
@@ -83,89 +77,88 @@ class QwenOmniVLMService:
     def unload_model(self):
         self._cleanup()
     
-    def _create_conversation(self, 
-                            text_input: str, 
-                            image_paths: Optional[List[str]] = None) -> List[dict]:
-        conversation = [
+    def _create_messages(self, 
+                        text_input: str, 
+                        image_paths: Optional[List[str]] = None) -> List[dict]:
+        
+        messages = [
             {
                 "role": "system",
-                "content": [
-                    {"type": "text", "text": self.system_prompt}
-                ],
+                "content": [{"type": "text", "text": self.system_prompt}]
             }
         ]
         
         user_content = []
         
+        # Add images first if provided
         if image_paths:
             for img_path in image_paths:
                 if os.path.exists(img_path):
-                    user_content.append({"type": "image", "image": img_path})
+                    try:
+                        image = Image.open(img_path).convert('RGB')
+                        user_content.append({"type": "image", "image": image})
+                    except Exception as e:
+                        logger.warning(f"Failed to load image {img_path}: {e}")
                 else:
                     logger.warning(f"Image file not found: {img_path}")
         
+        # Add text input
         user_content.append({"type": "text", "text": text_input})
         
-        conversation.append({
+        messages.append({
             "role": "user",
             "content": user_content
         })
         
-        return conversation
+        return messages
     
     def generate_response(self, 
                          text_input: str, 
                          image_paths: Optional[List[str]] = None,
                          max_new_tokens: int = 512,
-                         temperature: float = 0.7) -> str:
+                         temperature: float = 0.7,
+                         do_sample: bool = True) -> str:
         
         if not self.is_loaded:
             raise RuntimeError("Model not loaded. Please call load_model() first.")
         
         try:
-            conversation = self._create_conversation(text_input, image_paths)
-            text_prompt = self.processor.apply_chat_template(
-                conversation, 
+            messages = self._create_messages(text_input, image_paths)
+            
+            # Apply chat template and tokenize
+            inputs = self.processor.apply_chat_template(
+                messages, 
                 add_generation_prompt=True, 
-                tokenize=False,
-            )
+                tokenize=True,
+                return_dict=True, 
+                return_tensors="pt"
+            ).to(self.model.device, dtype=torch.bfloat16 if self.device == "cuda" else torch.float32)
             
-            audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)
-            
-            inputs = self.processor(
-                text=text_prompt,
-                audio=audios,
-                images=images,
-                videos=videos,
-                return_tensors="pt",
-                padding=True,
-                use_audio_in_video=False
-            )
-            
-            inputs = inputs.to(self.model.device).to(self.model.dtype)
+            input_len = inputs["input_ids"].shape[-1]
             
             # Generate response
-            with torch.no_grad():
-                text_ids = self.model.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    use_audio_in_video=False,
-                    return_audio=False,  # Disable audio output
-                )
+            with torch.inference_mode():
+                if do_sample and temperature > 0:
+                    generation = self.model.generate(
+                        **inputs, 
+                        max_new_tokens=max_new_tokens, 
+                        do_sample=True,
+                        temperature=temperature
+                    )
+                else:
+                    generation = self.model.generate(
+                        **inputs, 
+                        max_new_tokens=max_new_tokens, 
+                        do_sample=False
+                    )
+                
+                # Extract only the new tokens
+                generation = generation[0][input_len:]
             
-            full_response = self.processor.batch_decode(
-                text_ids, 
-                skip_special_tokens=True, 
-                clean_up_tokenization_spaces=False
-            )[0]
+            # Decode the response
+            response = self.processor.decode(generation, skip_special_tokens=True)
             
-            # Extract only the assistant's response
-            if "assistant\n" in full_response:
-                response = full_response.split("assistant\n")[-1].strip()
-            else:
-                response = full_response.strip()
-            
-            return response
+            return response.strip()
             
         except Exception as e:
             logger.error(f"Error during response generation: {str(e)}")
@@ -181,13 +174,13 @@ class QwenOmniVLMService:
             "device_map": self.device_map,
             "is_loaded": self.is_loaded,
             "supports_images": True,
-            "supports_audio": True,
-            "supports_video": False,  # Update later when have a speech-to-text service
+
+            "supports_video": False,
         }
 
 
 def main():
-    service = QwenOmniVLMService()
+    service = Gemma3VLMService()
     
     if not service.load_model():
         logger.error("Failed to load model")
@@ -201,7 +194,7 @@ def main():
     except Exception as e:
         logger.error(f"Text generation failed: {str(e)}")
     
-    test_images = ["test_1.jpg", "test_2.jpg"]
+    test_images = ["../assets/test_1.jpg", "../assets/test_2.jpg"]
     existing_images = [img for img in test_images if os.path.exists(img)]
     
     if existing_images:

@@ -37,6 +37,60 @@
   }
 }
 
+/* Audio Loading Overlay */
+.audio-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.audio-loading-spinner {
+  background-color: white;
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #374151;
+  margin: 0;
+}
+
+/* Fade effect for chat main content during audio loading */
+.chat-main.audio-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.3s ease-in-out;
+}
+
 /* Chat Interface Styles */
 .chat-container {
   display: flex;
@@ -130,6 +184,31 @@
 
 .status-error {
   color: #dc2626;
+}
+
+/* Audio Upload Button Styles */
+.audio-upload-button {
+  transition: all 0.2s ease-in-out;
+}
+
+.audio-upload-button:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.audio-upload-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Enhanced spinner animation for audio button */
+.audio-upload-button .spinner-char {
+  display: inline-block;
+  animation: buttonSpin 1s linear infinite;
+}
+
+@keyframes buttonSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Main Content */
@@ -245,6 +324,7 @@
 .message-text {
   white-space: pre-wrap;
   word-break: break-words;
+  text-align: left;
 }
 
 .message-timestamp {
@@ -316,6 +396,16 @@
   background-color: #d1d5db;
   color: #6b7280;
   cursor: not-allowed;
+}
+
+/* Audio upload button styling */
+.audio-upload-button {
+  flex-shrink: 0;
+}
+
+.audio-upload-button:hover:not(:disabled) {
+  background-color: #f9fafb !important;
+  border-color: #9ca3af !important;
 }
 
 /* Sidebar */
@@ -536,4 +626,78 @@
   .chat-main {
     flex-direction: column;
   }
+}
+
+/* Markdown formatting styles */
+.markdown-content {
+  /* Ensure markdown content inherits text properties */
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+
+.markdown-bold {
+  font-weight: 600;
+  color: inherit;
+}
+
+.markdown-italic {
+  font-style: italic;
+  color: inherit;
+}
+
+.markdown-code {
+  background-color: #f3f4f6;
+  color: #374151;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-family: 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 0.875em;
+  border: 1px solid #e5e7eb;
+}
+
+.markdown-list {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+
+.markdown-list-item {
+  margin: 0.25rem 0;
+  color: inherit;
+}
+
+.markdown-list-item::marker {
+  color: #6b7280;
+}
+
+/* Ensure proper spacing for markdown content in messages */
+.message-text .markdown-content br {
+  line-height: 1.5;
+}
+
+.message-text .markdown-content p {
+  margin: 0;
+}
+
+.message-text .markdown-content ul {
+  margin: 0.5rem 0;
+}
+
+.message-text .markdown-content li {
+  margin: 0.2rem 0;
+}
+
+/* Ensure inline code looks good in both user and assistant messages */
+.message-bubble-user .markdown-code {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #1e293b;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.message-bubble-assistant .markdown-code {
+  background-color: #f3f4f6;
+  color: #374151;
+  border-color: #e5e7eb;
 }

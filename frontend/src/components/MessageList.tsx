@@ -1,6 +1,7 @@
 import React from 'react';
 import { Message } from '../types';
 import { apiService } from '../services/api';
+import { MarkdownText } from '../utils/markdown';
 
 interface MessageListProps {
   messages: Message[];
@@ -53,7 +54,9 @@ const MessageList: React.FC<MessageListProps> = ({
                         ))}
                       </div>
                     )}
-                    <div className="message-text">{msg.content}</div>
+                    <div className="message-text">
+                      <MarkdownText content={msg.content} />
+                    </div>
                   </div>
                   <div className="message-timestamp">
                     {formatTime(msg.timestamp)}
@@ -67,7 +70,7 @@ const MessageList: React.FC<MessageListProps> = ({
           {isGenerating && (
             <div className="message message-assistant">
               <div className="message-content">
-                <div className="message-avatar message-avatar-assistant">🤖</div>
+                <div className="message-avatar message-avatar-assistant">A</div>
                 <div className="message-bubble message-bubble-assistant">
                   <div className="typing-indicator">
                     <div className="typing-dot"></div>

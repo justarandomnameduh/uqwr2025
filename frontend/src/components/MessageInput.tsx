@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UploadedImage } from '../types';
+import AudioUpload from './AudioUpload';
 
 interface MessageInputProps {
   onSendMessage: (message: string, selectedImages: UploadedImage[]) => void;
   selectedImages: UploadedImage[];
   onRemoveSelectedImage: (image: UploadedImage) => void;
+  onAudioLoadingChange?: (isLoading: boolean) => void;
   isGenerating: boolean;
   disabled: boolean;
 }
@@ -13,6 +15,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
   onSendMessage,
   selectedImages,
   onRemoveSelectedImage,
+  onAudioLoadingChange,
   isGenerating,
   disabled
 }) => {
@@ -33,6 +36,19 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
     onSendMessage(message, selectedImages);
     setMessage('');
+  };
+
+  const handleTranscriptionComplete = (transcriptionText: string) => {
+    // Append transcription to existing message with a space if there's already text
+    setMessage(prev => {
+      const separator = prev.trim() ? ' ' : '';
+      return prev + separator + transcriptionText;
+    });
+    
+    // Focus the textarea after transcription
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 100);
   };
 
   const canSend = (message.trim() || selectedImages.length > 0) && !isGenerating && !disabled;
@@ -88,21 +104,20 @@ const MessageInput: React.FC<MessageInputProps> = ({
             }
           }}
         />
-        <button
-          type="button"
-          disabled={true}
-          className="input-button input-button-audio"
-          title="Audio input - Coming soon"
-        >
-          🎤
-        </button>
-        <button
-          type="submit"
-          disabled={!canSend}
-          className={`input-button ${canSend ? 'input-button-send' : ''}`}
-        >
-          ➤
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <AudioUpload
+            onTranscriptionComplete={handleTranscriptionComplete}
+            onLoadingChange={onAudioLoadingChange}
+            disabled={disabled || isGenerating}
+          />
+          <button
+            type="submit"
+            disabled={!canSend}
+            className={`input-button ${canSend ? 'input-button-send' : ''}`}
+          >
+            ➤
+          </button>
+        </div>
       </form>
 
       {selectedImages.length > 0 && (

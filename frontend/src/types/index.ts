@@ -16,6 +16,18 @@ export interface UploadedImage {
   uploadError?: string;
 }
 
+export interface AudioFile {
+  id: string;
+  file: File;
+  name: string;
+  duration?: number;
+  isTranscribing?: boolean;
+  transcriptionText?: string;
+  transcriptionError?: string;
+}
+
+
+
 export interface AppState {
   messages: Message[];
   uploadedImages: UploadedImage[];
