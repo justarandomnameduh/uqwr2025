@@ -1,72 +1,20 @@
 import axios from 'axios';
+import type {
+  UploadResponse,
+  GenerateRequest,
+  GenerateResponse,
+  HealthResponse,
+  ModelInfo,
+  TranscriptionResponse,
+  TranscriptionModelInfo
+} from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 600000, // 10 minutes timeout for VLM generation
 });
-
-export interface UploadedFile {
-  original_name: string;
-  saved_name: string;
-  path: string;
-}
-
-export interface UploadResponse {
-  status: string;
-  message: string;
-  files: UploadedFile[];
-}
-
-export interface GenerateRequest {
-  text: string;
-  image_paths?: string[];
-  max_new_tokens?: number;
-  temperature?: number;
-}
-
-export interface GenerateResponse {
-  status: string;
-  response: string;
-  text_input: string;
-  images_used: number;
-}
-
-export interface HealthResponse {
-  status: string;
-  service: string;
-  vlm_model_loaded: boolean;
-  vlm_model_info: any;
-}
-
-export interface ModelInfo {
-  model_name: string;
-  device: string;
-  device_map: string;
-  is_loaded: boolean;
-  supports_images: boolean;
-  supports_video: boolean;
-}
-
-export interface TranscriptionResponse {
-  status: string;
-  transcription_text: string;
-  transcription_chunks?: any[];
-  mp3_filename?: string;
-  original_filename: string;
-  return_timestamps: boolean;
-}
-
-export interface TranscriptionModelInfo {
-  model_name: string;
-  device: string;
-  is_loaded: boolean;
-  supports_audio: boolean;
-  supported_formats: string[];
-}
-
-
 
 class ApiService {
   // Health check
@@ -143,7 +91,6 @@ class ApiService {
     });
     return response.data;
   }
-
 }
 
 export const apiService = new ApiService();

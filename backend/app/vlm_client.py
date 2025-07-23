@@ -52,7 +52,6 @@ class VLMClient:
                 "model_name": "Not loaded",
                 "is_loaded": False,
                 "supports_images": False,
-    
                 "supports_video": False,
             }
         
@@ -61,7 +60,7 @@ class VLMClient:
     def generate_response(self, 
                          text_input,
                          image_paths,
-                         max_new_tokens = 512,
+                         max_new_tokens = 2048,
                          temperature = 0.7):
         if not self.is_model_loaded or not self.vlm_service:
             raise RuntimeError("Model not loaded")

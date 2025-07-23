@@ -1,35 +1,25 @@
-import React, { useRef, useState } from 'react';
-import { UploadedImage } from '../types';
+import React, { useState, useRef } from 'react';
+import { Upload, X, Image as ImageIcon, Check } from 'lucide-react';
+import type { UploadedImage } from '../types';
+import { apiService } from '../services/api';
 
 interface ImageUploadProps {
-  onImageUpload: (files: File[]) => void;
+  onImageUpload: (images: UploadedImage[]) => void;
   uploadedImages: UploadedImage[];
   selectedImages: UploadedImage[];
-  onRemoveImage: (imageId: string) => void;
+  onRemoveImage: (image: UploadedImage) => void;
   onToggleSelection: (image: UploadedImage) => void;
 }
 
-const ImageUpload: React.FC<ImageUploadProps> = ({
+export const ImageUpload: React.FC<ImageUploadProps> = ({
   onImageUpload,
   uploadedImages,
   selectedImages,
   onRemoveImage,
-  onToggleSelection
+  onToggleSelection,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = (files: FileList | null) => {
-    if (!files) return;
-    const validFiles = Array.from(files).filter(file => {
-      const isImage = file.type.startsWith('image/');
-      const isValidSize = file.size <= 16 * 1024 * 1024; // 16MB
-      return isImage && isValidSize;
-    });
-    if (validFiles.length > 0) {
-      onImageUpload(validFiles);
-    }
-  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -44,35 +34,74 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    handleFileSelect(e.dataTransfer.files);
+    const files = Array.from(e.dataTransfer.files);
+    handleFileSelect(files);
+  };
+
+  const handleFileSelect = async (files: File[]) => {
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length === 0) {
+      alert('Please select valid image files');
+      return;
+    }
+
+    const newImages: UploadedImage[] = imageFiles.map(file => ({
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      file,
+      url: URL.createObjectURL(file),
+      isUploading: true,
+    }));
+
+    onImageUpload(newImages);
+
+    // Upload files to backend
+    try {
+      const response = await apiService.uploadFiles(imageFiles);
+      const updatedImages = newImages.map((img, index) => ({
+        ...img,
+        isUploading: false,
+        uploadedPath: response.files[index]?.path,
+      }));
+      onImageUpload(updatedImages);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      const failedImages = newImages.map(img => ({
+        ...img,
+        isUploading: false,
+        uploadError: 'Upload failed',
+      }));
+      onImageUpload(failedImages);
+    }
   };
 
   return (
-    <>
-      <div className="sidebar-header">
-        <div className="sidebar-title">
-          <span>Image Upload</span>
-        </div>
-        {/* <p className="sidebar-subtitle">
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200">
+        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+          <ImageIcon className="w-5 h-5" />
+          Images
+        </h3>
+        <p className="text-sm text-gray-500 mt-1">
           Upload images to use in your conversation
-        </p> */}
+        </p>
       </div>
 
-      <div className="upload-area">
+      {/* Upload Area */}
+      <div className="p-4">
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`upload-dropzone ${isDragging ? 'dragging' : ''}`}
+          className={`upload-dropzone cursor-pointer ${isDragging ? 'dragging' : ''}`}
+          onClick={() => fileInputRef.current?.click()}
         >
-          {/* <div className="upload-icon">📤</div> */}
-          <p className="upload-text">
-            Drag and drop images here, or click to select files
+          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+          <p className="text-sm text-gray-600 mb-2">
+            Drag and drop images here, or click to select
           </p>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn"
-          >
+          <button className="text-sm bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
             Select Files
           </button>
           <input
@@ -80,101 +109,86 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
             type="file"
             accept="image/*"
             multiple
-            onChange={(e) => handleFileSelect(e.target.files)}
-            style={{ display: 'none' }}
+            onChange={(e) => handleFileSelect(Array.from(e.target.files || []))}
+            className="hidden"
           />
         </div>
 
-        <div className="upload-info">
-          <p>• Supported formats: PNG, JPG, JPEG, GIF, BMP, WEBP</p>
-          <p>• Maximum file size: 16MB</p>
-          <p>• Multiple files can be selected</p>
+        <div className="mt-3 text-xs text-gray-500">
+          <p>• Supported: PNG, JPG, JPEG, GIF, BMP, WEBP</p>
+          <p>• Max size: 16MB per file</p>
+          <p>• Multiple files supported</p>
         </div>
       </div>
 
-      <div className="images-list">
-        <h4 style={{ fontWeight: 500, color: '#111827', marginBottom: '1rem' }}>
-          Available Images ({uploadedImages.length})
-        </h4>
-        
+      {/* Images List */}
+      <div className="flex-1 overflow-y-auto border-t border-gray-200">
         {uploadedImages.length === 0 ? (
-          <div className="images-empty">
-            {/* <div className="images-empty-icon">🖼️</div> */}
-            <p className="images-empty-text">No images uploaded yet</p>
+          <div className="p-8 text-center">
+            <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">No images uploaded yet</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div className="p-4 space-y-3">
             {uploadedImages.map((image) => {
-              const isSelected = selectedImages.some(img => img.id === image.id);
+              const isSelected = selectedImages.some(selected => selected.id === image.id);
+              
               return (
                 <div
                   key={image.id}
+                  className={`relative group border-2 rounded-lg overflow-hidden cursor-pointer transition-all ${
+                    isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
                   onClick={() => onToggleSelection(image)}
-                  style={{
-                    position: 'relative',
-                    cursor: 'pointer',
-                    border: isSelected ? '2px solid #3b82f6' : '1px solid #e5e7eb',
-                    borderRadius: '0.25rem',
-                    overflow: 'hidden'
-                  }}
                 >
-                  <img
-                    src={image.url}
-                    alt={image.file.name}
-                    style={{
-                      width: '4rem',
-                      height: '4rem',
-                      objectFit: 'cover',
-                      opacity: image.isUploading ? 0.5 : 1
-                    }}
-                  />
+                  <div className="aspect-square bg-gray-100">
+                    <img
+                      src={image.url}
+                      alt="Uploaded"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  
                   {image.isUploading && (
-                    <div style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: 'rgba(255, 255, 255, 0.8)'
-                    }}>
-                      ⟳
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     </div>
                   )}
+                  
+                  {image.uploadError && (
+                    <div className="absolute inset-0 bg-red-500 bg-opacity-75 flex items-center justify-center">
+                      <span className="text-white text-xs font-medium">Failed</span>
+                    </div>
+                  )}
+                  
+                  {isSelected && (
+                    <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                      <Check className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                  
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onRemoveImage(image.id);
+                      onRemoveImage(image);
                     }}
-                    style={{
-                      position: 'absolute',
-                      top: '0.125rem',
-                      right: '0.125rem',
-                      width: '1.25rem',
-                      height: '1.25rem',
-                      backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '50%',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
+                    className="absolute top-2 left-2 w-6 h-6 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                   >
-                    ×
+                    <X className="w-4 h-4 text-white" />
                   </button>
+                  
+                  <div className="p-2 bg-white">
+                    <p className="text-xs text-gray-600 truncate">{image.file.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {(image.file.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
-};
-
-export default ImageUpload; 
+}; 

@@ -104,7 +104,7 @@ def register_routes(app):
                 }), 400
             
             # Get optional parameters
-            max_new_tokens = request.json.get('max_new_tokens', 512)
+            max_new_tokens = request.json.get('max_new_tokens', 2048)
             temperature = request.json.get('temperature', 0.7)
             image_paths = request.json.get('image_paths', [])
             

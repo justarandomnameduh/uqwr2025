@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadedImage } from '../types';
-import AudioUpload from './AudioUpload';
+import { Send, X } from 'lucide-react';
+import type { UploadedImage } from '../types';
+import { AudioUpload } from './AudioUpload';
 
 interface MessageInputProps {
   onSendMessage: (message: string, selectedImages: UploadedImage[]) => void;
@@ -11,7 +12,7 @@ interface MessageInputProps {
   disabled: boolean;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({
+export const MessageInput: React.FC<MessageInputProps> = ({
   onSendMessage,
   selectedImages,
   onRemoveSelectedImage,
@@ -54,79 +55,79 @@ const MessageInput: React.FC<MessageInputProps> = ({
   const canSend = (message.trim() || selectedImages.length > 0) && !isGenerating && !disabled;
 
   return (
-    <div className="input-container">
-      {/* Selected images preview */}
+    <div className="border-t border-gray-200 bg-white p-4">
+      {/* Selected Images Preview */}
       {selectedImages.length > 0 && (
-        <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div className="mb-3 flex flex-wrap gap-2">
           {selectedImages.map((image) => (
-            <div key={image.id} style={{ position: 'relative' }}>
+            <div
+              key={image.id}
+              className="relative inline-block"
+            >
               <img
                 src={image.url}
-                alt={`Selected ${image.file.name}`}
-                style={{ width: '4rem', height: '4rem', objectFit: 'cover', borderRadius: '0.25rem', border: '2px solid #3b82f6' }}
+                alt="Selected"
+                className="w-16 h-16 object-cover rounded-lg border border-gray-200"
               />
               <button
                 onClick={() => onRemoveSelectedImage(image)}
-                style={{
-                  position: 'absolute',
-                  top: '-0.5rem',
-                  right: '-0.5rem',
-                  width: '1.5rem',
-                  height: '1.5rem',
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  borderRadius: '50%',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '0.75rem'
-                }}
+                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
               >
-                ×
+                <X className="w-3 h-3 text-white" />
               </button>
             </div>
           ))}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="input-form">
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={disabled ? "Backend disconnected..." : "Type your message..."}
-          className="input-textarea"
-          disabled={disabled || isGenerating}
-          rows={1}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit(e);
-            }
-          }}
-        />
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+      <form onSubmit={handleSubmit} className="flex items-end gap-3">
+        <div className="flex-1">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder={disabled ? "Backend disconnected..." : "Type your message..."}
+            className="w-full resize-none rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+            disabled={disabled || isGenerating}
+            rows={1}
+            style={{ minHeight: '48px', maxHeight: '120px' }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
           <AudioUpload
             onTranscriptionComplete={handleTranscriptionComplete}
             onLoadingChange={onAudioLoadingChange}
             disabled={disabled || isGenerating}
           />
+          
           <button
             type="submit"
             disabled={!canSend}
-            className={`input-button ${canSend ? 'input-button-send' : ''}`}
+            className={`
+              flex items-center justify-center w-12 h-12 rounded-lg transition-all
+              ${canSend
+                ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }
+            `}
           >
-            ➤
+            <Send className="w-5 h-5" />
           </button>
         </div>
       </form>
 
       {selectedImages.length > 0 && (
-        <div style={{ textAlign: 'center', fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
+        <div className="mt-2 text-center text-sm text-gray-500">
           {selectedImages.length} image(s) selected • Press Enter to send
         </div>
       )}
     </div>
   );
-};
-
-export default MessageInput; 
+}; 

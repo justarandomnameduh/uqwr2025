@@ -20,7 +20,7 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = upload_dir
     
     CORS(app, 
-         origins=["http://localhost:3000", "http://localhost:3001"], 
+         origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"], 
          supports_credentials=True)
     
     # Load VLM service

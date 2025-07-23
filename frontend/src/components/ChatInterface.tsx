@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, UploadedImage } from '../types';
-import { apiService, GenerateRequest, ModelInfo } from '../services/api';
-import MessageList from './MessageList';
-import MessageInput from './MessageInput';
-import ImageUpload from './ImageUpload';
-import StatusBar from './StatusBar';
+import { RefreshCw, Trash2, FileImage, MessageSquare } from 'lucide-react';
+import type { Message, UploadedImage, ModelInfo } from '../types';
+import { apiService } from '../services/api';
+import { MessageList } from './MessageList';
+import { MessageInput } from './MessageInput';
+import { ImageUpload } from './ImageUpload';
+import { StatusBar } from './StatusBar';
 import { v4 as uuidv4 } from 'uuid';
 
-const ChatInterface: React.FC = () => {
+export const ChatInterface: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<UploadedImage[]>([]);
@@ -50,12 +51,10 @@ const ChatInterface: React.FC = () => {
   const handleSendMessage = async (text: string, imagesToSend: UploadedImage[]) => {
     if (!text.trim() && imagesToSend.length === 0) return;
 
-    const messageContent = text;
-
     const userMessage: Message = {
       id: uuidv4(),
       type: 'user',
-      content: messageContent,
+      content: text,
       images: imagesToSend.map(img => img.uploadedPath || ''),
       timestamp: new Date(),
     };
@@ -65,7 +64,7 @@ const ChatInterface: React.FC = () => {
     setError(null);
 
     try {
-      const request: GenerateRequest = {
+      const request = {
         text: text,
         image_paths: imagesToSend.map(img => img.uploadedPath).filter(Boolean) as string[],
         max_new_tokens: 512,
@@ -100,68 +99,36 @@ const ChatInterface: React.FC = () => {
     setSelectedImages([]);
   };
 
-  const handleImageUpload = async (files: File[]) => {
-    const newImages: UploadedImage[] = files.map(file => ({
-      id: uuidv4(),
-      file,
-      url: URL.createObjectURL(file),
-      isUploading: true,
-    }));
-
-    setUploadedImages(prev => [...prev, ...newImages]);
-
-    try {
-      const response = await apiService.uploadFiles(files);
-      
-      setUploadedImages(prev => 
-        prev.map(img => {
-          const uploadedFile = response.files.find(f => f.original_name === img.file.name);
-          if (uploadedFile) {
-            return {
-              ...img,
-              uploadedPath: uploadedFile.path,
-              isUploading: false,
-            };
-          }
-          return img;
-        })
-      );
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      setUploadedImages(prev =>
-        prev.map(img => 
-          newImages.find(newImg => newImg.id === img.id)
-            ? { ...img, isUploading: false, uploadError: 'Upload failed' }
-            : img
-        )
-      );
-      setError('Failed to upload images. Please try again.');
-    }
+  const handleImageUpload = (newImages: UploadedImage[]) => {
+    setUploadedImages(prev => {
+      // Update existing images or add new ones
+      const updatedImages = [...prev];
+      newImages.forEach(newImg => {
+        const existingIndex = updatedImages.findIndex(img => img.id === newImg.id);
+        if (existingIndex >= 0) {
+          updatedImages[existingIndex] = newImg;
+        } else {
+          updatedImages.push(newImg);
+        }
+      });
+      return updatedImages;
+    });
   };
 
-  const handleRemoveImage = async (imageId: string) => {
-    const imageToRemove = uploadedImages.find(img => img.id === imageId);
-    
-    setUploadedImages(prev => prev.filter(img => img.id !== imageId));
-    setSelectedImages(prev => prev.filter(img => img.id !== imageId));
-
-    if (imageToRemove) {
-      URL.revokeObjectURL(imageToRemove.url);
-      if (imageToRemove.uploadedPath) {
-        try {
-          await apiService.deleteFile(imageToRemove.uploadedPath);
-        } catch (err) {
-          console.error('Failed to delete file from server:', err);
-        }
-      }
-    }
+  const handleRemoveImage = (imageToRemove: UploadedImage) => {
+    // Remove from uploaded images
+    setUploadedImages(prev => prev.filter(img => img.id !== imageToRemove.id));
+    // Remove from selected images
+    setSelectedImages(prev => prev.filter(img => img.id !== imageToRemove.id));
+    // Revoke object URL to free memory
+    URL.revokeObjectURL(imageToRemove.url);
   };
 
   const toggleImageSelection = (image: UploadedImage) => {
     setSelectedImages(prev => {
-      const isSelected = prev.some(img => img.id === image.id);
+      const isSelected = prev.some(selected => selected.id === image.id);
       if (isSelected) {
-        return prev.filter(img => img.id !== image.id);
+        return prev.filter(selected => selected.id !== image.id);
       } else {
         return [...prev, image];
       }
@@ -186,29 +153,43 @@ const ChatInterface: React.FC = () => {
   };
 
   return (
-    <div className="chat-container">
-      {/* Loading Overlay */}
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* Audio Loading Overlay */}
       {isAudioLoading && (
-        <div className="audio-loading-overlay">
-          <div className="audio-loading-spinner">
-            <div className="spinner"></div>
-            <div className="loading-text">Processing audio...</div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-6 flex flex-col items-center gap-4 shadow-xl">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-700 font-medium">Processing audio...</p>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <div className="chat-header">
-        <div className="chat-header-content">
+      <div className="bg-white border-b border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="chat-title">VLM Chat</h1>
-            <p className="chat-subtitle">Vision-Language Model Interface</p>
+            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
+              <MessageSquare className="w-8 h-8 text-blue-500" />
+              VLM Chat
+            </h1>
+            <p className="text-gray-600 mt-1">Vision-Language Model Interface</p>
           </div>
-          <div className="chat-buttons">
-            <button onClick={clearChat} className="btn">
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={clearChat}
+              disabled={messages.length === 0}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
               Clear Chat
             </button>
-            <button onClick={clearImages} className="btn">
+            <button
+              onClick={clearImages}
+              disabled={uploadedImages.length === 0}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <FileImage className="w-4 h-4" />
               Clear Images
             </button>
           </div>
@@ -222,13 +203,12 @@ const ChatInterface: React.FC = () => {
       </div>
 
       {/* Main content */}
-      <div className={`chat-main ${isAudioLoading ? 'audio-loading' : ''}`}>
+      <div className={`flex flex-1 overflow-hidden ${isAudioLoading ? 'opacity-60 pointer-events-none' : ''}`}>
         {/* Chat area */}
-        <div className="chat-area">
+        <div className="flex-1 flex flex-col">
           <MessageList 
             messages={messages}
             isGenerating={isGenerating}
-            apiService={apiService}
             messagesEndRef={messagesEndRef}
           />
           
@@ -243,7 +223,7 @@ const ChatInterface: React.FC = () => {
         </div>
 
         {/* Sidebar */}
-        <div className="sidebar">
+        <div className="w-80 bg-white border-l border-gray-200 flex flex-col">
           <ImageUpload
             onImageUpload={handleImageUpload}
             uploadedImages={uploadedImages}
@@ -255,6 +235,4 @@ const ChatInterface: React.FC = () => {
       </div>
     </div>
   );
-};
-
-export default ChatInterface; 
+}; 

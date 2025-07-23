@@ -1,60 +1,65 @@
-/* Base styles */
+@import "tailwindcss";
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
-/* Custom scrollbar styles */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-/* Animation for typing indicator */
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(-10px);
+@layer base {
+  body {
+    @apply font-sans antialiased;
   }
 }
 
-.typing-indicator span {
-  animation: typing 1.4s infinite ease-in-out;
-}
+@layer components {
+  /* Custom scrollbar styles */
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-2;
+  }
 
-.typing-indicator span:nth-child(1) {
-  animation-delay: 0s;
-}
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-gray-100 rounded;
+  }
 
-.typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
-}
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded hover:bg-gray-400;
+  }
 
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
+  /* Animation for typing indicator */
+  .typing-indicator span {
+    @apply inline-block animate-bounce;
+  }
+
+  .typing-indicator span:nth-child(1) {
+    animation-delay: 0s;
+  }
+
+  .typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  /* Message bubble styles */
+  .message-bubble {
+    @apply max-w-3xl p-4 rounded-2xl shadow-sm;
+  }
+
+  .message-user {
+    @apply ml-auto bg-blue-500 text-white;
+  }
+
+  .message-assistant {
+    @apply mr-auto bg-white border border-gray-200;
+  }
+
+  /* Upload dropzone styles */
+  .upload-dropzone {
+    @apply border-2 border-dashed border-gray-300 rounded-lg p-6 text-center transition-colors;
+  }
+
+  .upload-dropzone.dragging {
+    @apply border-blue-500 bg-blue-50;
+  }
+
+  .upload-dropzone:hover {
+    @apply border-gray-400;
+  }
 }

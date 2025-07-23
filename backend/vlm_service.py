@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Gemma3VLMService:
-    def __init__(self, model_name: str = "google/gemma-3-4b-it", device_map: str = "auto"):
+    def __init__(self, model_name: str = "google/gemma-3-4b-it", device_map: str = "cuda"):
         self.model_name = model_name
         self.device_map = device_map
         self.model = None
@@ -71,8 +71,11 @@ class Gemma3VLMService:
         logger.info("Model cleanup completed")
     
     def __del__(self):
-        if self.is_loaded:
-            self._cleanup()
+        try:
+            if self.is_loaded:
+                self._cleanup()
+        except:
+            pass  # Ignore cleanup errors during destruction
     
     def unload_model(self):
         self._cleanup()
@@ -115,7 +118,7 @@ class Gemma3VLMService:
     def generate_response(self, 
                          text_input: str, 
                          image_paths: Optional[List[str]] = None,
-                         max_new_tokens: int = 512,
+                         max_new_tokens: int = 2048,
                          temperature: float = 0.7,
                          do_sample: bool = True) -> str:
         

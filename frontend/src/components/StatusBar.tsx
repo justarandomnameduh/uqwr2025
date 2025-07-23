@@ -1,5 +1,6 @@
 import React from 'react';
-import { ModelInfo } from '../services/api';
+import { Wifi, WifiOff, AlertCircle } from 'lucide-react';
+import type { ModelInfo } from '../types';
 
 interface StatusBarProps {
   isConnected: boolean;
@@ -7,24 +8,41 @@ interface StatusBarProps {
   error: string | null;
 }
 
-const StatusBar: React.FC<StatusBarProps> = ({ isConnected, modelInfo, error }) => {
+export const StatusBar: React.FC<StatusBarProps> = ({ isConnected, modelInfo, error }) => {
   return (
-    <div className="status-bar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <span className={isConnected ? 'status-connected' : 'status-disconnected'}>
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </span>
+    <div className="flex items-center justify-between text-sm bg-gray-50 p-3 rounded-lg border">
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          {isConnected ? (
+            <>
+              <Wifi className="w-4 h-4 text-green-500" />
+              <span className="text-green-600 font-medium">Connected</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 text-red-500" />
+              <span className="text-red-600 font-medium">Disconnected</span>
+            </>
+          )}
+        </div>
+        
         {modelInfo && (
-          <span style={{ color: '#6b7280' }}>
-            {modelInfo.model_name} {modelInfo.is_loaded}
-          </span>
+          <div className="flex items-center gap-2 text-gray-600">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <span>
+              {modelInfo.model_name} 
+              {modelInfo.is_loaded && <span className="text-green-600 ml-1">(Loaded)</span>}
+            </span>
+          </div>
         )}
       </div>
+      
       {error && (
-        <span className="status-error"> Error: {error}</span>
+        <div className="flex items-center gap-2 text-red-600">
+          <AlertCircle className="w-4 h-4" />
+          <span className="text-sm">Error: {error}</span>
+        </div>
       )}
     </div>
   );
-};
-
-export default StatusBar; 
+}; 
