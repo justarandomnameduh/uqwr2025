@@ -1,0 +1,32 @@
+nohup: ignoring input
+2025-07-24 10:21:12.803051: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1753316472.816486  295826 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1753316472.820534  295826 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+W0000 00:00:1753316472.832903  295826 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1753316472.832945  295826 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1753316472.832956  295826 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+W0000 00:00:1753316472.832961  295826 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.
+2025-07-24 10:21:12.836230: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-07-24 10:21:14,841 - qwen_vl_utils.vision_process - INFO - set VIDEO_TOTAL_PIXELS: 90316800
+2025-07-24 10:21:14,841 - app - INFO - VLM service initialized. Model selection available via frontend.
+2025-07-24 10:21:14,996 - trans_service - INFO - Using device: cuda:0
+2025-07-24 10:21:14,996 - trans_service - INFO - Loading transcription model: openai/whisper-large-v3-turbo
+Device set to use cuda:0
+2025-07-24 10:21:19,243 - trans_service - INFO - Transcription model loaded successfully.
+2025-07-24 10:21:19,244 - app.trans_client - INFO - Transcription model loaded successfully
+2025-07-24 10:21:19,244 - app - INFO - Transcription model loaded successfully
+2025-07-24 10:21:19,249 - __main__ - INFO - Backend on 0.0.0.0:5000
+2025-07-24 10:21:19,249 - __main__ - INFO - Debug mode: False
+ * Serving Flask app 'app'
+ * Debug mode: off
+2025-07-24 10:21:19,250 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.20.162.48:5000
+2025-07-24 10:21:19,250 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-07-24 10:21:43,008 - werkzeug - INFO - 127.0.0.1 - - [24/Jul/2025 10:21:43] "GET /health HTTP/1.1" 200 -
+2025-07-24 10:21:43,274 - werkzeug - INFO - 127.0.0.1 - - [24/Jul/2025 10:21:43] "GET /model/info HTTP/1.1" 200 -
+2025-07-24 10:22:42,699 - werkzeug - INFO - 127.0.0.1 - - [24/Jul/2025 10:22:42] "GET /health HTTP/1.1" 200 -
+2025-07-24 10:22:43,009 - werkzeug - INFO - 127.0.0.1 - - [24/Jul/2025 10:22:43] "GET /model/info HTTP/1.1" 200 -

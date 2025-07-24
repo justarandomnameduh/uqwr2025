@@ -23,16 +23,10 @@ def create_app():
          origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"], 
          supports_credentials=True)
     
-    # Load VLM service
+    # Initialize VLM service (but don't load model yet - user will select)
     from app.vlm_client import get_vlm_service
-    
     vlm_service = get_vlm_service()
-    
-    if vlm_service.load_model():
-        logger.info("VLM model loaded successfully")
-    else:
-        logger.error("Failed to load VLM model")
-        logger.warning("The app will start but can't use VLM")
+    logger.info("VLM service initialized. Model selection available via frontend.")
     
     # Load transcription service
     from app.trans_client import get_transcription_service

@@ -6,6 +6,7 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ImageUpload } from './ImageUpload';
 import { StatusBar } from './StatusBar';
+import { ModelSelector } from './ModelSelector';
 import { v4 as uuidv4 } from 'uuid';
 
 export const ChatInterface: React.FC = () => {
@@ -17,6 +18,7 @@ export const ChatInterface: React.FC = () => {
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -29,6 +31,7 @@ export const ChatInterface: React.FC = () => {
         
         const info = await apiService.getModelInfo();
         setModelInfo(info);
+        setCurrentModelId(info.current_model_id || null);
         setError(null);
       } catch (err) {
         setIsConnected(false);
@@ -48,8 +51,25 @@ export const ChatInterface: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleModelChange = async (modelId: string) => {
+    // Update current model ID and refresh model info
+    setCurrentModelId(modelId);
+    try {
+      const info = await apiService.getModelInfo();
+      setModelInfo(info);
+    } catch (err) {
+      console.error('Failed to refresh model info:', err);
+    }
+  };
+
   const handleSendMessage = async (text: string, imagesToSend: UploadedImage[]) => {
     if (!text.trim() && imagesToSend.length === 0) return;
+
+    // Check if model is loaded
+    if (!currentModelId) {
+      setError('Please select and load a model before sending messages.');
+      return;
+    }
 
     const userMessage: Message = {
       id: uuidv4(),
@@ -195,6 +215,14 @@ export const ChatInterface: React.FC = () => {
           </div>
         </div>
         
+        {/* Model Selector */}
+        <div className="mb-4">
+          <ModelSelector 
+            onModelChange={handleModelChange}
+            disabled={isGenerating || isAudioLoading}
+          />
+        </div>
+        
         <StatusBar 
           isConnected={isConnected}
           modelInfo={modelInfo}
@@ -218,7 +246,7 @@ export const ChatInterface: React.FC = () => {
             onRemoveSelectedImage={toggleImageSelection}
             onAudioLoadingChange={handleAudioLoadingChange}
             isGenerating={isGenerating}
-            disabled={!isConnected}
+            disabled={!isConnected || !currentModelId}
           />
         </div>
 

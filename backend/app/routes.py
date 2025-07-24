@@ -45,6 +45,8 @@ def register_routes(app):
             'endpoints': {
                 'health': '/health',
                 'model_info': '/model/info',
+                'available_models': '/model/available',
+                'switch_model': '/model/switch',
                 'generate': '/generate',
                 'upload': '/upload',
                 'transcription_model_info': '/transcription/model/info',
@@ -55,6 +57,69 @@ def register_routes(app):
             }
         })
     
+    @app.route('/model/available', methods=['GET'])
+    def get_available_models():
+        """Get list of available models and current status"""
+        try:
+            vlm_service = get_vlm_service()
+            available_models = vlm_service.get_available_models()
+            current_model_id = vlm_service.get_current_model_id()
+            
+            return jsonify({
+                'status': 'success',
+                'available_models': available_models,
+                'current_model_id': current_model_id,
+                'is_task_running': False  # For compatibility with frontend
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting available models: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    @app.route('/model/switch', methods=['POST'])
+    def switch_model():
+        """Load a specific model (only if no model is currently loaded)"""
+        try:
+            data = request.json
+            if not data or 'model_id' not in data:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'model_id is required'
+                }), 400
+            
+            model_id = data['model_id']
+            vlm_service = get_vlm_service()
+            
+            # Check if a model is already loaded
+            if vlm_service.is_loaded():
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Model {vlm_service.get_current_model_id()} is already loaded. Cannot switch models in this session. Please restart the backend to load a different model.'
+                }), 400
+            
+            # Try to load the requested model
+            if vlm_service.load_model(model_id):
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Model {model_id} loaded successfully',
+                    'current_model_id': model_id
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to load model {model_id}'
+                }), 500
+                
+        except Exception as e:
+            logger.error(f"Error switching model: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
     @app.route('/model/info', methods=['GET'])
     def model_info():
         vlm_service = get_vlm_service()
@@ -64,9 +129,17 @@ def register_routes(app):
     def reload_model():
         try:
             vlm_service = get_vlm_service()
+            current_model_id = vlm_service.get_current_model_id()
+            
+            if not current_model_id:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No model is currently loaded'
+                }), 400
+            
             vlm_service.unload_model()
             
-            if vlm_service.load_model():
+            if vlm_service.load_model(current_model_id):
                 return jsonify({
                     'status': 'success',
                     'message': 'Model reloaded successfully'
@@ -92,7 +165,7 @@ def register_routes(app):
             if not vlm_service.is_loaded():
                 return jsonify({
                     'status': 'error',
-                    'message': 'VLM model not loaded'
+                    'message': 'No VLM model loaded. Please select and load a model first.'
                 }), 503
             
             # Get text input
@@ -104,7 +177,7 @@ def register_routes(app):
                 }), 400
             
             # Get optional parameters
-            max_new_tokens = request.json.get('max_new_tokens', 2048)
+            max_new_tokens = request.json.get('max_new_tokens', 512)
             temperature = request.json.get('temperature', 0.7)
             image_paths = request.json.get('image_paths', [])
             

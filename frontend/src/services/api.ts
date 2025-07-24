@@ -16,6 +16,25 @@ const api = axios.create({
   timeout: 600000, // 10 minutes timeout for VLM generation
 });
 
+interface AvailableModelsResponse {
+  status: string;
+  available_models: Record<string, {
+    display_name: string;
+    description: string;
+    supports_images: boolean;
+    supports_video: boolean;
+    memory_requirements: string;
+  }>;
+  current_model_id: string | null;
+  is_task_running: boolean;
+}
+
+interface SwitchModelResponse {
+  status: string;
+  message: string;
+  current_model_id?: string;
+}
+
 class ApiService {
   // Health check
   async checkHealth(): Promise<HealthResponse> {
@@ -26,6 +45,18 @@ class ApiService {
   // Get model information
   async getModelInfo(): Promise<ModelInfo> {
     const response = await api.get('/model/info');
+    return response.data;
+  }
+
+  // Get available models
+  async getAvailableModels(): Promise<AvailableModelsResponse> {
+    const response = await api.get('/model/available');
+    return response.data;
+  }
+
+  // Switch/load model
+  async switchModel(modelId: string): Promise<SwitchModelResponse> {
+    const response = await api.post('/model/switch', { model_id: modelId });
     return response.data;
   }
 

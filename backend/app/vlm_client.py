@@ -5,65 +5,153 @@ from typing import Optional, List, Dict, Any
 from threading import Lock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from vlm_service import Gemma3VLMService
-
+# Import all available services
+from services.gemma3_4b_service import Gemma3_4BService
+from services.gemma3_12b_service import Gemma3_12BService
+from services.qwen2_5_7b_service import Qwen2_5_7BService
+from services.wiswheat_gwen_7b_service import WisWheat_Gwen_7BService
+from services.wiswheat_gwen_3b_service import WisWheat_Gwen_3BService
 logger = logging.getLogger(__name__)
+
+# Available models configuration
+AVAILABLE_MODELS = {
+    "gemma3-4b": {
+        "display_name": "Gemma3 4B",
+        "description": "Smaller, faster model with good performance for most tasks",
+        "service_class": Gemma3_4BService,
+        "supports_images": True,
+        "supports_video": False,
+        "memory_requirements": "~8GB VRAM"
+    },
+    "gemma3-12b": {
+        "display_name": "Gemma3 12B", 
+        "description": "Larger, more capable model with enhanced reasoning abilities",
+        "service_class": Gemma3_12BService,
+        "supports_images": True,
+        "supports_video": False,
+        "memory_requirements": "~24GB VRAM"
+    },
+    "qwen2.5-7b": {
+        "display_name": "Qwen 2.5 VL 7B",
+        "description": "Advanced vision-language model with memory optimizations (max 2 images, 1024px)",
+        "service_class": Qwen2_5_7BService,
+        "supports_images": True,
+        "supports_video": False,
+        "memory_requirements": "~14GB VRAM (optimized for 12GB)"
+    },
+    "wiswheat-gwen-7b": {
+        "display_name": "WisWheat Gwen 7B",
+        "description": "Advanced vision-language model with memory optimizations (max 2 images, 1024px)",
+        "service_class": WisWheat_Gwen_7BService,
+        "supports_images": True,
+        "supports_video": False,
+        "memory_requirements": "~14GB VRAM (optimized for 12GB)"
+    },
+    "wiswheat-gwen-3b": {
+        "display_name": "WisWheat Gwen 3B",
+        "description": "Advanced vision-language model with memory optimizations (max 2 images, 1024px)",
+        "service_class": WisWheat_Gwen_3BService,
+        "supports_images": True,
+        "supports_video": False,
+        "memory_requirements": "~14GB VRAM (optimized for 12GB)"
+    }
+}
 
 class VLMClient:
     
     def __init__(self):
         self.vlm_service = None
+        self.current_model_id = None
         self.is_model_loaded = False
         self.lock = Lock()
         
-    def load_model(self):
+    def get_available_models(self) -> Dict[str, Any]:
+        """Get list of available models with their info"""
+        models_info = {}
+        for model_id, config in AVAILABLE_MODELS.items():
+            models_info[model_id] = {
+                "display_name": config["display_name"],
+                "description": config["description"],
+                "supports_images": config["supports_images"],
+                "supports_video": config["supports_video"],
+                "memory_requirements": config["memory_requirements"]
+            }
+        return models_info
+        
+    def load_model(self, model_id: str = None) -> bool:
+        """Load a specific model. Can only load one model per session."""
         with self.lock:
+            # If a model is already loaded, prevent switching
             if self.is_model_loaded:
+                logger.warning(f"Model {self.current_model_id} already loaded. Cannot switch models in this session.")
                 return True
                 
+            # Default to first available model if none specified
+            if model_id is None:
+                model_id = list(AVAILABLE_MODELS.keys())[0]
+                
+            if model_id not in AVAILABLE_MODELS:
+                logger.error(f"Unknown model ID: {model_id}")
+                return False
+                
             try:
-                self.vlm_service = Gemma3VLMService()
+                logger.info(f"Loading model: {model_id}")
+                model_config = AVAILABLE_MODELS[model_id]
+                service_class = model_config["service_class"]
+                
+                self.vlm_service = service_class()
                 if self.vlm_service.load_model():
                     self.is_model_loaded = True
-                    logger.info("VLM model loaded successfully")
+                    self.current_model_id = model_id
+                    logger.info(f"Model {model_id} loaded successfully")
                     return True
                 else:
-                    logger.error("Failed to load VLM model")
+                    logger.error(f"Failed to load model: {model_id}")
+                    self.vlm_service = None
                     return False
                     
             except Exception as e:
-                logger.error(f"Error loading VLM model: {e}")
+                logger.error(f"Error loading model {model_id}: {e}")
+                self.vlm_service = None
                 return False
     
     def unload_model(self):
+        """Unload the current model"""
         with self.lock:
             if self.vlm_service:
                 self.vlm_service.unload_model()
                 self.vlm_service = None
                 self.is_model_loaded = False
+                self.current_model_id = None
                 logger.info("VLM model unloaded")
     
     def is_loaded(self):
         return self.is_model_loaded
+        
+    def get_current_model_id(self):
+        return self.current_model_id
     
     def get_model_info(self):
         if not self.is_model_loaded or not self.vlm_service:
             return {
-                "model_name": "Not loaded",
+                "model_name": "No model loaded",
+                "current_model_id": None,
                 "is_loaded": False,
                 "supports_images": False,
                 "supports_video": False,
             }
         
-        return self.vlm_service.get_model_info()
+        base_info = self.vlm_service.get_model_info()
+        base_info["current_model_id"] = self.current_model_id
+        return base_info
     
     def generate_response(self, 
                          text_input,
                          image_paths,
-                         max_new_tokens = 2048,
+                         max_new_tokens = 512,
                          temperature = 0.7):
         if not self.is_model_loaded or not self.vlm_service:
-            raise RuntimeError("Model not loaded")
+            raise RuntimeError("No model loaded. Please load a model first.")
         
         try:
             with self.lock:
