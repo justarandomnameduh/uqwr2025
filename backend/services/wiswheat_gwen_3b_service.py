@@ -167,7 +167,7 @@ class WisWheat_Gwen_3BService:
                          max_new_tokens: int = 512,
                          temperature: float = 0.7,
                          do_sample: bool = True) -> str:
-        
+        max_new_tokens = 2048 # TODO: Hardcoded for now
         if not self.is_loaded:
             raise RuntimeError("WisWheat-Gwen-3B model not loaded. Please call load_model() first.")
         

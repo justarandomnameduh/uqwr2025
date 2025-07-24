@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 AVAILABLE_MODELS = {
     "gemma3-4b": {
         "display_name": "Gemma3 4B",
-        "description": "Smaller, faster model with good performance for most tasks",
+        "description": "",
         "service_class": Gemma3_4BService,
         "supports_images": True,
         "supports_video": False,
@@ -25,7 +25,7 @@ AVAILABLE_MODELS = {
     },
     "gemma3-12b": {
         "display_name": "Gemma3 12B", 
-        "description": "Larger, more capable model with enhanced reasoning abilities",
+        "description": "",
         "service_class": Gemma3_12BService,
         "supports_images": True,
         "supports_video": False,
@@ -33,27 +33,27 @@ AVAILABLE_MODELS = {
     },
     "qwen2.5-7b": {
         "display_name": "Qwen 2.5 VL 7B",
-        "description": "Advanced vision-language model with memory optimizations (max 2 images, 1024px)",
+        "description": "",
         "service_class": Qwen2_5_7BService,
         "supports_images": True,
         "supports_video": False,
-        "memory_requirements": "~14GB VRAM (optimized for 12GB)"
+        "memory_requirements": "~14GB VRAM"
     },
     "wiswheat-gwen-7b": {
         "display_name": "WisWheat Gwen 7B",
-        "description": "Advanced vision-language model with memory optimizations (max 2 images, 1024px)",
+        "description": "",
         "service_class": WisWheat_Gwen_7BService,
         "supports_images": True,
         "supports_video": False,
-        "memory_requirements": "~14GB VRAM (optimized for 12GB)"
+        "memory_requirements": "~14GB VRAM"
     },
     "wiswheat-gwen-3b": {
         "display_name": "WisWheat Gwen 3B",
-        "description": "Advanced vision-language model with memory optimizations (max 2 images, 1024px)",
+        "description": "",
         "service_class": WisWheat_Gwen_3BService,
         "supports_images": True,
         "supports_video": False,
-        "memory_requirements": "~14GB VRAM (optimized for 12GB)"
+        "memory_requirements": "~6GB VRAM"
     }
 }
 
