@@ -5,6 +5,7 @@ export interface Message {
   images?: string[];
   timestamp: Date;
   isLoading?: boolean;
+  isStreaming?: boolean;
 }
 
 export interface UploadedImage {

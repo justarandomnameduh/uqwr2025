@@ -4,11 +4,12 @@ import os
 import torch
 import gc
 import logging
-from typing import List, Optional, Dict, Any
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from typing import List, Optional, Dict, Any, Iterator
+from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, TextIteratorStreamer
 from qwen_vl_utils import process_vision_info
 from PIL import Image
 import time
+from threading import Thread
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,90 @@ class WisWheat_Gwen_7BService:
             
         except Exception as e:
             logger.error(f"Error during WisWheat-Gwen-7B response generation: {str(e)}")
+            # Clear cache on error
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            raise
+    
+    def generate_response_stream(self, 
+                               text_input: str, 
+                               image_paths: Optional[List[str]] = None,
+                               max_new_tokens: int = 512,
+                               temperature: float = 0.7,
+                               do_sample: bool = True) -> Iterator[str]:
+        """
+        Generate streaming response using TextIteratorStreamer.
+        Yields tokens as they are generated.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("WisWheat-Gwen-7B model not loaded. Please call load_model() first.")
+        
+        try:
+            # Create messages
+            messages = [{"role": "system", "content": self.system_prompt}]
+            
+            # Add user message with images if provided
+            user_content = []
+            if image_paths:
+                for img_path in image_paths:
+                    if os.path.exists(img_path):
+                        try:
+                            image = Image.open(img_path).convert('RGB')
+                            user_content.append({"type": "image", "image": image})
+                        except Exception as e:
+                            logger.warning(f"Failed to load image {img_path}: {e}")
+                    else:
+                        logger.warning(f"Image file not found: {img_path}")
+            
+            user_content.append({"type": "text", "text": text_input})
+            messages.append({"role": "user", "content": user_content})
+            
+            # Prepare inputs using the processor
+            text_input = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            
+            image_inputs, video_inputs = process_vision_info(messages)
+            inputs = self.processor(
+                text=[text_input],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt",
+            )
+            inputs = inputs.to(self.device)
+            
+            # Create streamer
+            streamer = TextIteratorStreamer(tokenizer=self.processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
+            
+            # Set up generation arguments
+            generation_kwargs = {
+                **inputs,
+                "max_new_tokens": max_new_tokens,
+                "streamer": streamer,
+                "do_sample": do_sample,
+            }
+            
+            if do_sample and temperature > 0:
+                generation_kwargs["temperature"] = temperature
+            
+            # Start generation in a separate thread
+            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
+            thread.start()
+            
+            # Yield tokens as they are generated
+            for token in streamer:
+                yield token
+            
+            # Wait for generation to complete
+            thread.join()
+            
+            # Clear cache after generation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+        except Exception as e:
+            logger.error(f"Error during WisWheat-Gwen-7B streaming generation: {str(e)}")
             # Clear cache on error
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

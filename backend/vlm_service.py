@@ -5,10 +5,11 @@ import torch
 import requests
 import gc
 import logging
-from typing import List, Optional, Dict, Any
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration
+from typing import List, Optional, Dict, Any, Iterator
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration, TextIteratorStreamer
 from PIL import Image
 import time
+from threading import Thread
 
 logging.basicConfig(
     level=logging.INFO,
@@ -165,6 +166,60 @@ class Gemma3VLMService:
             
         except Exception as e:
             logger.error(f"Error during response generation: {str(e)}")
+            raise
+    
+    def generate_response_stream(self, 
+                               text_input: str, 
+                               image_paths: Optional[List[str]] = None,
+                               max_new_tokens: int = 512,
+                               temperature: float = 0.7,
+                               do_sample: bool = True) -> Iterator[str]:
+        """
+        Generate streaming response using TextIteratorStreamer.
+        Yields tokens as they are generated.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("Model not loaded. Please call load_model() first.")
+        
+        try:
+            messages = self._create_messages(text_input, image_paths)
+            
+            # Apply chat template and tokenize
+            inputs = self.processor.apply_chat_template(
+                messages, 
+                add_generation_prompt=True, 
+                tokenize=True,
+                return_dict=True, 
+                return_tensors="pt"
+            ).to(self.model.device, dtype=torch.bfloat16 if self.device == "cuda" else torch.float32)
+            
+            # Create streamer
+            streamer = TextIteratorStreamer(tokenizer=self.processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
+            
+            # Set up generation arguments
+            generation_kwargs = {
+                **inputs,
+                "max_new_tokens": max_new_tokens,
+                "streamer": streamer,
+                "do_sample": do_sample,
+            }
+            
+            if do_sample and temperature > 0:
+                generation_kwargs["temperature"] = temperature
+            
+            # Start generation in a separate thread
+            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
+            thread.start()
+            
+            # Yield tokens as they are generated
+            for token in streamer:
+                yield token
+            
+            # Wait for generation to complete
+            thread.join()
+            
+        except Exception as e:
+            logger.error(f"Error during streaming generation: {str(e)}")
             raise
     
     def is_model_loaded(self) -> bool:

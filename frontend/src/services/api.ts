@@ -81,6 +81,77 @@ class ApiService {
     return response.data;
   }
 
+  // Generate streaming VLM response
+  async generateResponseStream(
+    request: GenerateRequest,
+    onToken: (token: string) => void,
+    onStart?: (metadata: { text_input: string; images_used: number }) => void,
+    onError?: (error: string) => void,
+    onDone?: () => void
+  ): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/generate/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Stream not supported');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete lines
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              switch (data.type) {
+                case 'start':
+                  onStart?.(data);
+                  break;
+                case 'token':
+                  onToken(data.content);
+                  break;
+                case 'done':
+                  onDone?.();
+                  return;
+                case 'error':
+                  onError?.(data.message);
+                  return;
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE data:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      onError?.(error instanceof Error ? error.message : 'Unknown streaming error');
+    }
+  }
+
   // Get uploaded file URL
   getFileUrl(filename: string): string {
     return `${API_BASE_URL}/uploads/${filename}`;

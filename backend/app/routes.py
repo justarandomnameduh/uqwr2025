@@ -2,9 +2,10 @@ import os
 import uuid
 import logging
 from werkzeug.utils import secure_filename
-from flask import jsonify, request, current_app
+from flask import jsonify, request, current_app, Response
 from app.vlm_client import get_vlm_service
 from app.trans_client import get_transcription_service
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,78 @@ def register_routes(app):
             
         except Exception as e:
             logger.error(f"Error generating response: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    @app.route('/generate/stream', methods=['POST'])
+    def generate_response_stream():
+        try:
+            vlm_service = get_vlm_service()
+            
+            if not vlm_service.is_loaded():
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No VLM model loaded. Please select and load a model first.'
+                }), 503
+            
+            # Get text input
+            text_input = request.json.get('text', '').strip()
+            if not text_input:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Text input is required'
+                }), 400
+            
+            # Get optional parameters
+            max_new_tokens = request.json.get('max_new_tokens', 512)
+            temperature = request.json.get('temperature', 0.7)
+            image_paths = request.json.get('image_paths', [])
+            
+            # Validate image paths
+            validated_paths = []
+            for path in image_paths:
+                full_path = os.path.join(current_app.config['UPLOAD_FOLDER'], path)
+                if os.path.exists(full_path):
+                    validated_paths.append(full_path)
+                else:
+                    logger.warning(f"Image not found: {path}")
+            
+            def generate():
+                try:
+                    # Send initial metadata
+                    yield f"data: {json.dumps({'type': 'start', 'text_input': text_input, 'images_used': len(validated_paths)})}\n\n"
+                    
+                    # Stream tokens
+                    for token in vlm_service.generate_response_stream(
+                        text_input=text_input,
+                        image_paths=validated_paths if validated_paths else None,
+                        max_new_tokens=max_new_tokens,
+                        temperature=temperature
+                    ):
+                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                    
+                    # Send completion signal
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    
+                except Exception as e:
+                    logger.error(f"Error during streaming generation: {e}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            
+            return Response(
+                generate(),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error setting up streaming response: {e}")
             return jsonify({
                 'status': 'error',
                 'message': str(e)

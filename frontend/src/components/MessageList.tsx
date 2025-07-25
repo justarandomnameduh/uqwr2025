@@ -57,7 +57,12 @@ export const MessageList: React.FC<MessageListProps> = ({
                 {/* Message Content */}
                 <div className="mb-2">
                   {msg.type === 'assistant' ? (
-                    <MarkdownText>{msg.content}</MarkdownText>
+                    <div>
+                      <MarkdownText>{msg.content}</MarkdownText>
+                      {msg.isStreaming && (
+                        <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1" />
+                      )}
+                    </div>
                   ) : (
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                   )}
@@ -95,27 +100,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             </div>
           ))}
           
-          {/* Loading indicator for AI response */}
-          {isGenerating && (
-            <div className="flex gap-4 justify-start">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-white" />
-                </div>
-              </div>
-              
-              <div className="message-bubble message-assistant">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                  {/* <div className="typing-indicator">
-                    <span className="text-gray-400">•</span>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-gray-400">•</span>
-                  </div> */}
-                </div>
-              </div>
-            </div>
-          )}
+
           
           <div ref={messagesEndRef} />
         </div>

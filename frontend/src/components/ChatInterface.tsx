@@ -83,6 +83,17 @@ export const ChatInterface: React.FC = () => {
     setIsGenerating(true);
     setError(null);
 
+    // Create an assistant message placeholder for streaming
+    const assistantMessageId = uuidv4();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      type: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      isStreaming: true,
+    };
+    setMessages(prev => [...prev, assistantMessage]);
+
     try {
       const request = {
         text: text,
@@ -91,25 +102,54 @@ export const ChatInterface: React.FC = () => {
         temperature: 0.7,
       };
 
-      const response = await apiService.generateResponse(request);
-
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        type: 'assistant',
-        content: response.response,
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      await apiService.generateResponseStream(
+        request,
+        // onToken - append each token to the assistant message
+        (token: string) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === assistantMessageId 
+              ? { ...msg, content: msg.content + token }
+              : msg
+          ));
+        },
+        // onStart - optional metadata handling
+        (metadata) => {
+          console.log('Streaming started:', metadata);
+        },
+        // onError - handle streaming errors
+        (error: string) => {
+          console.error('Streaming error:', error);
+          setMessages(prev => prev.map(msg => 
+            msg.id === assistantMessageId 
+              ? { 
+                  ...msg, 
+                  content: msg.content || `Error: ${error}`,
+                  isStreaming: false 
+                }
+              : msg
+          ));
+          setError('Failed to generate response. Please try again.');
+        },
+        // onDone - finalize the message
+        () => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === assistantMessageId 
+              ? { ...msg, isStreaming: false }
+              : msg
+          ));
+        }
+      );
     } catch (err: any) {
       console.error('Generation error:', err);
-      const errorMessage: Message = {
-        id: uuidv4(),
-        type: 'assistant',
-        content: `Error: ${err.response?.data?.message || err.message || 'Failed to generate response'}`,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => prev.map(msg => 
+        msg.id === assistantMessageId 
+          ? { 
+              ...msg, 
+              content: `Error: ${err.message || 'Failed to generate response'}`,
+              isStreaming: false 
+            }
+          : msg
+      ));
       setError('Failed to generate response. Please try again.');
     } finally {
       setIsGenerating(false);

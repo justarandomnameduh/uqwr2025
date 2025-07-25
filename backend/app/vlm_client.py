@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterator
 from threading import Lock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -165,6 +165,28 @@ class VLMClient:
                 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
+            raise
+    
+    def generate_response_stream(self, 
+                               text_input,
+                               image_paths,
+                               max_new_tokens = 512,
+                               temperature = 0.7) -> Iterator[str]:
+        if not self.is_model_loaded or not self.vlm_service:
+            raise RuntimeError("No model loaded. Please load a model first.")
+        
+        try:
+            with self.lock:
+                for token in self.vlm_service.generate_response_stream(
+                    text_input=text_input,
+                    image_paths=image_paths,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature
+                ):
+                    yield token
+                
+        except Exception as e:
+            logger.error(f"Error generating streaming response: {e}")
             raise
 
 
