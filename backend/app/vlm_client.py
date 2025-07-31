@@ -11,6 +11,7 @@ from services.gemma3_12b_service import Gemma3_12BService
 from services.qwen2_5_7b_service import Qwen2_5_7BService
 from services.wiswheat_gwen_7b_service import WisWheat_Gwen_7BService
 from services.wiswheat_gwen_3b_service import WisWheat_Gwen_3BService
+from services.wiswheat_llava_next_mistral_7b_service import WisWheat_LLavaNext_Mistral_7BService
 logger = logging.getLogger(__name__)
 
 # Available models configuration
@@ -54,6 +55,14 @@ AVAILABLE_MODELS = {
         "supports_images": True,
         "supports_video": False,
         "memory_requirements": "~6GB VRAM"
+    },
+    "wiswheat-llava-next-mistral-7b": {
+        "display_name": "WisWheat LLavaNext Mistral 7B",
+        "description": "",
+        "service_class": WisWheat_LLavaNext_Mistral_7BService,
+        "supports_images": True,
+        "supports_video": False,
+        "memory_requirements": "~14GB VRAM"
     }
 }
 

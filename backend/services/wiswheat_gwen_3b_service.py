@@ -10,6 +10,7 @@ from qwen_vl_utils import process_vision_info
 from PIL import Image
 import time
 from threading import Thread
+from utils.common import preprocess_image_in_memory
 
 logger = logging.getLogger(__name__)
 
@@ -28,29 +29,9 @@ class WisWheat_Gwen_3BService:
         
         self.max_image_size = (1024, 1024)  
         self.min_pixels = 256 * 28 * 28     
-        self.max_pixels = 1280 * 28 * 28    
+        self.max_pixels = 1280 * 28 * 28
+        self.max_images_per_request = 10    # Maximum number of images per request    
         
-        
-    def _preprocess_image(self, image_path: str) -> str:
-        """Preprocess image to reduce memory usage"""
-        try:
-            with Image.open(image_path) as img:
-                # Convert to RGB if necessary
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                
-                # Resize image if it's too large
-                if img.size[0] > self.max_image_size[0] or img.size[1] > self.max_image_size[1]:
-                    img.thumbnail(self.max_image_size, Image.Resampling.LANCZOS)
-                    logger.info(f"Resized image from {image_path} to {img.size}")
-                
-                # Save processed image temporarily
-                processed_path = image_path.replace('.', '_processed.')
-                img.save(processed_path, quality=85, optimize=True)
-                return processed_path
-        except Exception as e:
-            logger.warning(f"Failed to preprocess image {image_path}: {e}")
-            return image_path
         
     def load_model(self) -> bool:
         if self.is_loaded:
@@ -112,42 +93,43 @@ class WisWheat_Gwen_3BService:
     
     def _create_messages(self, 
                         text_input: str, 
-                        image_paths: Optional[List[str]] = None) -> List[dict]:
+                        image_paths: Optional[List[str]] = None,
+                        include_system_prompt: bool = False) -> tuple:
         """
-        Create messages in Qwen format with system prompt and user content.
+        Create messages in Qwen format with user content and return processed images.
+        Returns: (messages, processed_images_for_cleanup)
         """
-        # Start with system message (commented out for memory efficiency)
-        messages = [
-            # {
-            #     "role": "system",
-            #     "content": self.system_prompt
-            # }
-        ]
+        # Start with system message if requested
+        messages = []
+        if include_system_prompt:
+            messages.append({
+                "role": "system",
+                "content": self.system_prompt
+            })
         
         # Create user message content
         user_content = []
+        processed_images_for_cleanup = []
         
-        # Add images first if provided (limit to 2 images max for memory)
+        # Add images first if provided
         if image_paths:
-            processed_images = []
-            for i, img_path in enumerate(image_paths[:2]):  # Limit to 2 images
+            for i, img_path in enumerate(image_paths[:self.max_images_per_request]):
                 if os.path.exists(img_path):
                     try:
-                        # Preprocess image to reduce memory usage
-                        processed_path = self._preprocess_image(img_path)
-                        processed_images.append(processed_path)
+                        # Process image in memory to avoid disk I/O
+                        processed_image = preprocess_image_in_memory(img_path, self.max_image_size)
                         
                         user_content.append({
                             "type": "image",
-                            "image": processed_path
+                            "image": processed_image
                         })
                     except Exception as e:
                         logger.warning(f"Failed to process image {img_path}: {e}")
                 else:
                     logger.warning(f"Image file not found: {img_path}")
             
-            if len(image_paths) > 2:
-                logger.warning(f"Limited to 2 images for memory efficiency. Provided: {len(image_paths)}")
+            if len(image_paths) > self.max_images_per_request:
+                logger.warning(f"Limited to {self.max_images_per_request} images for memory efficiency. Provided: {len(image_paths)}")
         
         # Add text input
         user_content.append({
@@ -160,7 +142,7 @@ class WisWheat_Gwen_3BService:
             "content": user_content
         })
         
-        return messages
+        return messages, processed_images_for_cleanup
     
     def generate_response(self, 
                          text_input: str, 
@@ -177,7 +159,7 @@ class WisWheat_Gwen_3BService:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            messages = self._create_messages(text_input, image_paths)
+            messages, _ = self._create_messages(text_input, image_paths, include_system_prompt=False)
             
             # Apply chat template to get text
             text = self.processor.apply_chat_template(
@@ -198,7 +180,7 @@ class WisWheat_Gwen_3BService:
                 return_tensors="pt",
             )
             
-            # Move inputs to device
+            # Move inputs to device with correct dtype
             inputs = inputs.to(self.model.device, dtype=torch.float16)
             
             # Generate response with memory optimizations
@@ -237,15 +219,7 @@ class WisWheat_Gwen_3BService:
                 clean_up_tokenization_spaces=False
             )
             
-            # Clean up processed images
-            if image_paths:
-                for img_path in image_paths:
-                    processed_path = img_path.replace('.', '_processed.')
-                    if os.path.exists(processed_path) and processed_path != img_path:
-                        try:
-                            os.remove(processed_path)
-                        except:
-                            pass
+            # No cleanup needed - images processed in memory
             
             # Clear cache after processing
             if torch.cuda.is_available():
@@ -275,39 +249,24 @@ class WisWheat_Gwen_3BService:
             raise RuntimeError("WisWheat-Gwen-3B model not loaded. Please call load_model() first.")
         
         try:
-            # Create messages
-            messages = [{"role": "system", "content": self.system_prompt}]
-            
-            # Add user message with images if provided
-            user_content = []
-            if image_paths:
-                for img_path in image_paths:
-                    if os.path.exists(img_path):
-                        try:
-                            image = Image.open(img_path).convert('RGB')
-                            user_content.append({"type": "image", "image": image})
-                        except Exception as e:
-                            logger.warning(f"Failed to load image {img_path}: {e}")
-                    else:
-                        logger.warning(f"Image file not found: {img_path}")
-            
-            user_content.append({"type": "text", "text": text_input})
-            messages.append({"role": "user", "content": user_content})
+            # Use consolidated message creation with system prompt for streaming
+            messages, _ = self._create_messages(text_input, image_paths, include_system_prompt=True)
             
             # Prepare inputs using the processor
-            text_input = self.processor.apply_chat_template(
+            text_prompt = self.processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
             
             image_inputs, video_inputs = process_vision_info(messages)
             inputs = self.processor(
-                text=[text_input],
+                text=[text_prompt],
                 images=image_inputs,
                 videos=video_inputs,
                 padding=True,
                 return_tensors="pt",
             )
-            inputs = inputs.to(self.device)
+            # Fix data type mismatch - use correct dtype when moving to device
+            inputs = inputs.to(self.device, dtype=torch.float16)
             
             # Create streamer
             streamer = TextIteratorStreamer(tokenizer=self.processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
@@ -360,6 +319,6 @@ class WisWheat_Gwen_3BService:
                 "max_image_size": self.max_image_size,
                 "min_pixels": self.min_pixels,
                 "max_pixels": self.max_pixels,
-                "max_images_per_request": 2
+                "max_images_per_request": self.max_images_per_request
             }
         } 
