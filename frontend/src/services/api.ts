@@ -201,8 +201,33 @@ class ApiService {
     timestamp: string;
     user_input: string;
     images_used: number;
+    session_id: string;
   }): Promise<{ status: string; message: string }> {
     const response = await api.post('/log/assistant_message', messageData);
+    return response.data;
+  }
+
+  // Session management methods
+  async createSession(sessionData: {
+    name: string;
+    model_id: string;
+  }): Promise<{ status: string; session: any; message: string }> {
+    const response = await api.post('/sessions', sessionData);
+    return response.data;
+  }
+
+  async listSessions(): Promise<{ status: string; sessions: any[] }> {
+    const response = await api.get('/sessions');
+    return response.data;
+  }
+
+  async getSession(sessionId: string): Promise<{ status: string; session: any; messages: any[] }> {
+    const response = await api.get(`/sessions/${sessionId}`);
+    return response.data;
+  }
+
+  async deleteSession(sessionId: string): Promise<{ status: string; message: string }> {
+    const response = await api.delete(`/sessions/${sessionId}`);
     return response.data;
   }
 }

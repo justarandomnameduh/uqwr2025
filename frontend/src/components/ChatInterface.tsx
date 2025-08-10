@@ -7,6 +7,7 @@ import { MessageInput } from './MessageInput';
 import { ImageUpload } from './ImageUpload';
 import { StatusBar } from './StatusBar';
 import { ModelSelector } from './ModelSelector';
+import { SessionManager } from './SessionManager';
 import { v4 as uuidv4 } from 'uuid';
 
 export const ChatInterface: React.FC = () => {
@@ -20,6 +21,11 @@ export const ChatInterface: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  
+  // Ref to track current session loading operation
+  const currentSessionLoadRef = useRef<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +65,8 @@ export const ChatInterface: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+
+
   const handleModelChange = async (modelId: string) => {
     // Update current model ID and refresh model info
     setCurrentModelId(modelId);
@@ -70,12 +78,85 @@ export const ChatInterface: React.FC = () => {
     }
   };
 
+  const handleSessionSelect = async (sessionId: string) => {
+    if (!sessionId) {
+      currentSessionLoadRef.current = null;
+      setCurrentSessionId(null);
+      setMessages([]);
+      return;
+    }
+
+    // Prevent race conditions from rapid session switches
+    currentSessionLoadRef.current = sessionId;
+    
+    try {
+      setIsLoadingSession(true);
+      // Clear messages immediately when starting to load a session
+      setMessages([]);
+      setError(null);
+      
+      // Load session messages
+      const response = await apiService.getSession(sessionId);
+      
+      // Check if this session load is still current (user hasn't switched to another session)
+      if (currentSessionLoadRef.current !== sessionId) {
+        console.log(`Session ${sessionId} load cancelled - user switched to another session`);
+        return;
+      }
+      
+      // Convert messages to frontend format
+      const loadedMessages: Message[] = response.messages.map((msg: any) => ({
+        id: msg.id,
+        type: msg.message_type,
+        content: msg.content,
+        images: msg.images ? JSON.parse(msg.images) : [],
+        timestamp: new Date(msg.created_at),
+        isStreaming: false
+      }));
+      
+      // Double-check that we're still loading the same session
+      if (currentSessionLoadRef.current === sessionId) {
+        setCurrentSessionId(sessionId);
+        setMessages(loadedMessages);
+        console.log(`✓ Successfully loaded session ${sessionId} with ${loadedMessages.length} messages`);
+      } else {
+        console.log(`Session ${sessionId} load completed but cancelled - user switched sessions`);
+      }
+      
+    } catch (err: any) {
+      console.error('Failed to load session:', err);
+      // Only show error if this session load is still current
+      if (currentSessionLoadRef.current === sessionId) {
+        setError('Failed to load session');
+        setCurrentSessionId(null);
+        setMessages([]);
+      }
+    } finally {
+      // Only update loading state if this session load is still current
+      if (currentSessionLoadRef.current === sessionId) {
+        setIsLoadingSession(false);
+      }
+    }
+  };
+
+  const handleSessionCreate = (sessionId: string) => {
+    // Clear messages for new session and update tracking ref
+    currentSessionLoadRef.current = sessionId;
+    setMessages([]);
+    setCurrentSessionId(sessionId);
+  };
+
   const handleSendMessage = async (text: string, imagesToSend: UploadedImage[]) => {
     if (!text.trim() && imagesToSend.length === 0) return;
 
-    // Check if model is loaded
+    // Check if model is loaded and session is selected
     if (!currentModelId) {
       setError('Please select and load a model before sending messages.');
+      return;
+    }
+
+    if (!currentSessionId) {
+      setError('Please create or select a session before sending messages.');
       return;
     }
 
@@ -108,6 +189,7 @@ export const ChatInterface: React.FC = () => {
         image_paths: imagesToSend.map(img => img.uploadedPath).filter(Boolean) as string[],
         max_new_tokens: 512,
         temperature: 0.7,
+        session_id: currentSessionId,
       };
 
       await apiService.generateResponseStream(
@@ -163,7 +245,8 @@ export const ChatInterface: React.FC = () => {
                 content: assistantMsg.content,
                 timestamp: assistantMsg.timestamp.toISOString(),
                 user_input: text,
-                images_used: imagesToSend.length
+                images_used: imagesToSend.length,
+                session_id: currentSessionId!
               }).then(() => {
                 // Backend confirmed receipt - unlock input
                 setIsWaitingForLogConfirmation(false);
@@ -327,11 +410,17 @@ export const ChatInterface: React.FC = () => {
       <div className={`flex flex-1 overflow-hidden ${isAudioLoading ? 'opacity-60 pointer-events-none' : ''}`}>
         {/* Chat area */}
         <div className="flex-1 flex flex-col">
-          <MessageList 
-            messages={messages}
-            isGenerating={isGenerating}
-            messagesEndRef={messagesEndRef}
-          />
+                    {isLoadingSession ? (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              Loading session...
+            </div>
+          ) : (
+            <MessageList
+              messages={messages}
+              isGenerating={isGenerating}
+              messagesEndRef={messagesEndRef}
+            />
+          )}
           
           <MessageInput
             onSendMessage={handleSendMessage}
@@ -339,13 +428,26 @@ export const ChatInterface: React.FC = () => {
             onRemoveSelectedImage={toggleImageSelection}
             onAudioLoadingChange={handleAudioLoadingChange}
             isGenerating={isGenerating}
-            disabled={!isConnected || !currentModelId}
+            disabled={!isConnected || !currentModelId || !currentSessionId}
             isWaitingForLogConfirmation={isWaitingForLogConfirmation}
+            isConnected={isConnected}
+            currentModelId={currentModelId}
           />
         </div>
 
         {/* Sidebar */}
         <div className="w-80 bg-white border-l border-gray-200 flex flex-col">
+          {/* Session Management */}
+          <div className="p-4 border-b border-gray-200">
+            <SessionManager
+              currentModelId={currentModelId}
+              currentSessionId={currentSessionId}
+              onSessionSelect={handleSessionSelect}
+              onSessionCreate={handleSessionCreate}
+              isConnected={isConnected}
+            />
+          </div>
+
           <ImageUpload
             onImageUpload={handleImageUpload}
             uploadedImages={uploadedImages}

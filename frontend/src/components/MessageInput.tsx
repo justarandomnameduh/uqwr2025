@@ -11,6 +11,8 @@ interface MessageInputProps {
   isGenerating: boolean;
   disabled: boolean;
   isWaitingForLogConfirmation?: boolean;
+  isConnected?: boolean;
+  currentModelId?: string | null;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -20,7 +22,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onAudioLoadingChange,
   isGenerating,
   disabled,
-  isWaitingForLogConfirmation = false
+  isWaitingForLogConfirmation = false,
+  isConnected = true,
+  currentModelId = null
 }) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -89,7 +93,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder={
-              disabled ? "Backend disconnected..." :
+              disabled ? 
+                (!isConnected ? "Backend disconnected..." :
+                 !currentModelId ? "Please select a model..." :
+                 "Please create or select a session...") :
               isWaitingForLogConfirmation ? "Waiting for backend confirmation..." :
               isGenerating ? "AI is thinking..." :
               "Type your message..."

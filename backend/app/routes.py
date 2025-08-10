@@ -1,11 +1,13 @@
 import os
 import uuid
 import logging
+import json
 from werkzeug.utils import secure_filename
 from flask import jsonify, request, current_app, Response
 from app.vlm_client import get_vlm_service
 from app.trans_client import get_transcription_service
-import json
+from models import db
+from models.model import ChatSession, ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,11 @@ def register_routes(app):
                 'upload_audio': '/transcription/upload',
                 'transcribe': '/transcription/transcribe',
                 'upload_and_transcribe': '/transcription/upload_and_transcribe',
-                'log_assistant_message': '/log/assistant_message'
+                'log_assistant_message': '/log/assistant_message',
+                'create_session': '/sessions',
+                'list_sessions': '/sessions',
+                'get_session': '/sessions/{session_id}',
+                'delete_session': '/sessions/{session_id}'
             }
         })
     
@@ -170,6 +176,22 @@ def register_routes(app):
                     'message': 'No VLM model loaded. Please select and load a model first.'
                 }), 503
             
+            # Get and validate session_id
+            session_id = request.json.get('session_id', '').strip()
+            if not session_id:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session ID is required'
+                }), 400
+            
+            # Verify session exists
+            session = ChatSession.query.filter_by(id=session_id).first()
+            if not session:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session not found'
+                }), 404
+            
             # Get text input
             text_input = request.json.get('text', '').strip()
             if not text_input:
@@ -225,6 +247,22 @@ def register_routes(app):
                     'message': 'No VLM model loaded. Please select and load a model first.'
                 }), 503
             
+            # Get and validate session_id
+            session_id = request.json.get('session_id', '').strip()
+            if not session_id:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session ID is required'
+                }), 400
+            
+            # Verify session exists
+            session = ChatSession.query.filter_by(id=session_id).first()
+            if not session:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session not found'
+                }), 404
+            
             # Get text input
             text_input = request.json.get('text', '').strip()
             if not text_input:
@@ -246,6 +284,29 @@ def register_routes(app):
                     validated_paths.append(full_path)
                 else:
                     logger.warning(f"Image not found: {path}")
+            
+            # Store user message in database BEFORE starting streaming
+            try:
+                user_message = ChatMessage(
+                    session_id=session_id,
+                    message_type='user',
+                    content=text_input,
+                    images=json.dumps(image_paths) if image_paths else None,
+                    images_used=len(validated_paths)
+                )
+                db.session.add(user_message)
+                
+                # Update session timestamp
+                session.updated_at = db.func.now()
+                db.session.commit()
+                
+            except Exception as e:
+                logger.error(f"Error storing user message: {e}")
+                db.session.rollback()
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to store message: {str(e)}'
+                }), 500
             
             def generate():
                 try:
@@ -621,10 +682,133 @@ def register_routes(app):
                 'message': str(e)
             }), 500
     
+    # Session management endpoints
+    @app.route('/sessions', methods=['POST'])
+    def create_session():
+        """Create a new chat session"""
+        try:
+            data = request.json
+            if not data:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'JSON data is required'
+                }), 400
+            
+            # Validate required fields
+            name = data.get('name', '').strip()
+            model_id = data.get('model_id', '').strip()
+            
+            if not name:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session name is required'
+                }), 400
+                
+            if not model_id:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Model ID is required'
+                }), 400
+            
+            # Create new session
+            session = ChatSession(name=name, model_id=model_id)
+            db.session.add(session)
+            db.session.commit()
+            
+            logger.info(f"Created new session: {session.id} - {session.name} - {session.model_id}")
+            
+            return jsonify({
+                'status': 'success',
+                'session': session.to_dict(),
+                'message': f'Session "{name}" created successfully'
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error creating session: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    @app.route('/sessions', methods=['GET'])
+    def list_sessions():
+        """List all chat sessions"""
+        try:
+            sessions = ChatSession.query.order_by(ChatSession.updated_at.desc()).all()
+            return jsonify({
+                'status': 'success',
+                'sessions': [session.to_dict() for session in sessions]
+            })
+            
+        except Exception as e:
+            logger.error(f"Error listing sessions: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    @app.route('/sessions/<session_id>', methods=['GET'])
+    def get_session(session_id):
+        """Get session details with messages"""
+        try:
+            session = ChatSession.query.filter_by(id=session_id).first()
+            if not session:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session not found'
+                }), 404
+            
+            # Get messages for this session
+            messages = ChatMessage.query.filter_by(session_id=session_id).order_by(ChatMessage.created_at.asc()).all()
+            
+            return jsonify({
+                'status': 'success',
+                'session': session.to_dict(),
+                'messages': [message.to_dict() for message in messages]
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting session {session_id}: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    @app.route('/sessions/<session_id>', methods=['DELETE'])
+    def delete_session(session_id):
+        """Delete a chat session and all its messages"""
+        try:
+            session = ChatSession.query.filter_by(id=session_id).first()
+            if not session:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session not found'
+                }), 404
+            
+            session_name = session.name
+            db.session.delete(session)
+            db.session.commit()
+            
+            logger.info(f"Deleted session: {session_id} - {session_name}")
+            
+            return jsonify({
+                'status': 'success',
+                'message': f'Session "{session_name}" deleted successfully'
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error deleting session {session_id}: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+
     @app.route('/log/assistant_message', methods=['POST'])
     def log_assistant_message():
         """
-        Endpoint to receive and log assistant messages from the frontend
+        Endpoint to receive and store assistant messages in database
         after text streaming is complete
         """
         try:
@@ -635,6 +819,22 @@ def register_routes(app):
                     'message': 'JSON data is required'
                 }), 400
             
+            # Get and validate session_id
+            session_id = data.get('session_id', '').strip()
+            if not session_id:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session ID is required'
+                }), 400
+            
+            # Verify session exists
+            session = ChatSession.query.filter_by(id=session_id).first()
+            if not session:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Session not found'
+                }), 404
+            
             # Get message data
             message_id = data.get('message_id', 'unknown')
             content = data.get('content', '')
@@ -642,10 +842,43 @@ def register_routes(app):
             user_input = data.get('user_input', '')
             images_used = data.get('images_used', 0)
             
+            # Check for duplicate assistant messages (same content within last 5 seconds)
+            import datetime
+            five_seconds_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=5)
+            
+            existing_message = ChatMessage.query.filter(
+                ChatMessage.session_id == session_id,
+                ChatMessage.message_type == 'assistant',
+                ChatMessage.content == content,
+                ChatMessage.created_at >= five_seconds_ago
+            ).first()
+            
+            if existing_message:
+                logger.warning(f"Duplicate assistant message detected for session {session_id}, skipping storage")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Duplicate message detected, skipped storage'
+                })
+            
+            # Store assistant message in database
+            assistant_message = ChatMessage(
+                session_id=session_id,
+                message_type='assistant',
+                content=content,
+                images_used=images_used,
+                user_input=user_input
+            )
+            db.session.add(assistant_message)
+            
+            # Update session timestamp
+            session.updated_at = db.func.now()
+            db.session.commit()
+            
             # Log the assistant message
             logger.info("=" * 80)
             logger.info("ASSISTANT MESSAGE RECEIVED")
             logger.info("=" * 80)
+            logger.info(f"Session ID: {session_id}")
             logger.info(f"Message ID: {message_id}")
             logger.info(f"Timestamp: {timestamp}")
             logger.info(f"User Input: {user_input}")
@@ -657,10 +890,11 @@ def register_routes(app):
             
             return jsonify({
                 'status': 'success',
-                'message': 'Assistant message logged successfully'
+                'message': 'Assistant message logged and stored successfully'
             })
             
         except Exception as e:
+            db.session.rollback()
             logger.error(f"Error logging assistant message: {e}")
             return jsonify({
                 'status': 'error',

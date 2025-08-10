@@ -15,12 +15,29 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'TODO')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
     
+    # Database configuration
+    db_path = os.environ.get('DATABASE_PATH', 'chat_sessions.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
     app.config['UPLOAD_FOLDER'] = upload_dir
     
+    # Initialize database
+    from models import db
+    from models.model import ChatSession, ChatMessage
+    db.init_app(app)
+    
+    with app.app_context():
+        db.create_all()
+        logger.info("Database tables created/verified")
+    
     CORS(app, 
-         origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"], 
+         origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+         expose_headers=["Content-Type"],
          supports_credentials=True)
     
     # Initialize VLM service (but don't load model yet - user will select)
