@@ -14,16 +14,38 @@ from utils.common import preprocess_image_in_memory
 
 logger = logging.getLogger(__name__)
 
-class WisWheat_Gwen_7BService:
-    def __init__(self, device_map: str = "auto"):
-        self.model_name = "WisWheat/WisWheat_Qwen-7B"
-        self.device_map = device_map
+class WisWheat_GwenService:
+    def __init__(self, model_size: str = "3b", device_map: str = None):
+        """
+        Initialize WisWheat Gwen service with configurable model size.
+        
+        Args:
+            model_size: Either "3b" or "7b" to select the model variant
+            device_map: Device mapping strategy. If None, auto-configured based on model size
+        """
+        if model_size not in ["3b", "7b"]:
+            raise ValueError(f"Invalid model_size '{model_size}'. Must be '3b' or '7b'")
+        
+        self.model_size = model_size
+        self.model_name = f"WisWheat/WisWheat_Qwen-{model_size.upper()}"
+        
+        # Auto-configure device_map based on model size if not provided
+        if device_map is None:
+            self.device_map = "cuda" if model_size == "3b" else "auto"
+        else:
+            self.device_map = device_map
+            
         self.model = None
         self.processor = None
         self.is_loaded = False
                 
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        logger.info(f"WisWheat-Gwen-7B using device: {self.device}")
+        # Configure device based on model size
+        if model_size == "3b":
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:  # 7b
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            
+        logger.info(f"WisWheat-Gwen-{model_size.upper()} using device: {self.device}")
         
         self.system_prompt = "You are a helpful assistant."
         
@@ -35,11 +57,11 @@ class WisWheat_Gwen_7BService:
         
     def load_model(self) -> bool:
         if self.is_loaded:
-            logger.info("WisWheat-Gwen-7B model already loaded")
+            logger.info(f"WisWheat-Gwen-{self.model_size.upper()} model already loaded")
             return True
             
         try:
-            logger.info(f"Loading WisWheat-Gwen-7B model: {self.model_name}")
+            logger.info(f"Loading WisWheat-Gwen-{self.model_size.upper()} model: {self.model_name}")
             
             # Set memory optimization environment variable
             os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
@@ -61,11 +83,11 @@ class WisWheat_Gwen_7BService:
             )
             
             self.is_loaded = True
-            logger.info(f"WisWheat-Gwen-7B model loaded successfully with memory optimizations.")
+            logger.info(f"WisWheat-Gwen-{self.model_size.upper()} model loaded successfully with memory optimizations.")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to load WisWheat-Gwen-7B model: {str(e)}")
+            logger.error(f"Failed to load WisWheat-Gwen-{self.model_size.upper()} model: {str(e)}")
             self._cleanup()
             return False
     
@@ -86,7 +108,7 @@ class WisWheat_Gwen_7BService:
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
         
-        logger.info("WisWheat-Gwen-7B model cleanup completed")
+        logger.info(f"WisWheat-Gwen-{self.model_size.upper()} model cleanup completed")
     
     def unload_model(self):
         self._cleanup()
@@ -151,8 +173,12 @@ class WisWheat_Gwen_7BService:
                          temperature: float = 0.7,
                          do_sample: bool = True) -> str:
         
+        # Apply hardcoded max_new_tokens for 3b model (keeping existing behavior)
+        if self.model_size == "3b":
+            max_new_tokens = 2048  # TODO: Hardcoded for now
+        
         if not self.is_loaded:
-            raise RuntimeError("WisWheat-Gwen-7B model not loaded. Please call load_model() first.")
+            raise RuntimeError(f"WisWheat-Gwen-{self.model_size.upper()} model not loaded. Please call load_model() first.")
         
         try:
             # Clear cache before processing
@@ -229,7 +255,7 @@ class WisWheat_Gwen_7BService:
             return output_text[0].strip() if output_text else ""
             
         except Exception as e:
-            logger.error(f"Error during WisWheat-Gwen-7B response generation: {str(e)}")
+            logger.error(f"Error during WisWheat-Gwen-{self.model_size.upper()} response generation: {str(e)}")
             # Clear cache on error
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -246,7 +272,7 @@ class WisWheat_Gwen_7BService:
         Yields tokens as they are generated.
         """
         if not self.is_loaded:
-            raise RuntimeError("WisWheat-Gwen-7B model not loaded. Please call load_model() first.")
+            raise RuntimeError(f"WisWheat-Gwen-{self.model_size.upper()} model not loaded. Please call load_model() first.")
         
         try:
             # Use consolidated message creation with system prompt for streaming
@@ -298,7 +324,7 @@ class WisWheat_Gwen_7BService:
                 torch.cuda.empty_cache()
             
         except Exception as e:
-            logger.error(f"Error during WisWheat-Gwen-7B streaming generation: {str(e)}")
+            logger.error(f"Error during WisWheat-Gwen-{self.model_size.upper()} streaming generation: {str(e)}")
             # Clear cache on error
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -310,6 +336,7 @@ class WisWheat_Gwen_7BService:
     def get_model_info(self) -> Dict[str, Any]:
         return {
             "model_name": self.model_name,
+            "model_size": self.model_size,
             "device": self.device,
             "device_map": self.device_map,
             "is_loaded": self.is_loaded,
@@ -321,4 +348,4 @@ class WisWheat_Gwen_7BService:
                 "max_pixels": self.max_pixels,
                 "max_images_per_request": self.max_images_per_request
             }
-        } 
+        }

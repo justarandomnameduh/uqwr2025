@@ -6,32 +6,13 @@ from threading import Lock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import all available services
-from services.gemma3_4b_service import Gemma3_4BService
-from services.gemma3_12b_service import Gemma3_12BService
 from services.qwen2_5_7b_service import Qwen2_5_7BService
-from services.wiswheat_gwen_7b_service import WisWheat_Gwen_7BService
-from services.wiswheat_gwen_3b_service import WisWheat_Gwen_3BService
+from services.wiswheat_gwen_service import WisWheat_GwenService
 from services.wiswheat_llava_next_mistral_7b_service import WisWheat_LLavaNext_Mistral_7BService
 logger = logging.getLogger(__name__)
 
 # Available models configuration
 AVAILABLE_MODELS = {
-    "gemma3-4b": {
-        "display_name": "Gemma3 4B",
-        "description": "",
-        "service_class": Gemma3_4BService,
-        "supports_images": True,
-        "supports_video": False,
-        "memory_requirements": "~8GB VRAM"
-    },
-    "gemma3-12b": {
-        "display_name": "Gemma3 12B", 
-        "description": "",
-        "service_class": Gemma3_12BService,
-        "supports_images": True,
-        "supports_video": False,
-        "memory_requirements": "~24GB VRAM"
-    },
     "qwen2.5-7b": {
         "display_name": "Qwen 2.5 VL 7B",
         "description": "",
@@ -43,7 +24,8 @@ AVAILABLE_MODELS = {
     "wiswheat-gwen-7b": {
         "display_name": "WisWheat Gwen 7B",
         "description": "",
-        "service_class": WisWheat_Gwen_7BService,
+        "service_class": WisWheat_GwenService,
+        "service_kwargs": {"model_size": "7b"},
         "supports_images": True,
         "supports_video": False,
         "memory_requirements": "~14GB VRAM"
@@ -51,7 +33,8 @@ AVAILABLE_MODELS = {
     "wiswheat-gwen-3b": {
         "display_name": "WisWheat Gwen 3B",
         "description": "",
-        "service_class": WisWheat_Gwen_3BService,
+        "service_class": WisWheat_GwenService,
+        "service_kwargs": {"model_size": "3b"},
         "supports_images": True,
         "supports_video": False,
         "memory_requirements": "~6GB VRAM"
@@ -108,7 +91,10 @@ class VLMClient:
                 model_config = AVAILABLE_MODELS[model_id]
                 service_class = model_config["service_class"]
                 
-                self.vlm_service = service_class()
+                # Get service kwargs if provided
+                service_kwargs = model_config.get("service_kwargs", {})
+                
+                self.vlm_service = service_class(**service_kwargs)
                 if self.vlm_service.load_model():
                     self.is_model_loaded = True
                     self.current_model_id = model_id
