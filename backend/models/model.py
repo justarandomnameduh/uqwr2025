@@ -1,5 +1,6 @@
 import datetime
 import uuid
+import hashlib
 from . import db
 
 class ChatSession(db.Model):
@@ -46,6 +47,8 @@ class ChatMessage(db.Model):
         db.Index('idx_message_session_id', 'session_id'),
         db.Index('idx_message_created_at', 'created_at'),
         db.Index('idx_message_type', 'message_type'),
+        # Composite index for efficient duplicate checking
+        db.Index('idx_message_deduplication', 'session_id', 'message_type', 'content_hash', 'created_at'),
     )
     
     # Message unique identifier (UUIDv4)
@@ -56,6 +59,8 @@ class ChatMessage(db.Model):
     message_type = db.Column(db.String(20), nullable=False)
     # Message content
     content = db.Column(db.Text, nullable=False)
+    # Content hash for efficient duplicate detection (SHA256 of content + session_id + message_type)
+    content_hash = db.Column(db.String(64), nullable=True, index=True)
     # Image paths used in this message (JSON string)
     images = db.Column(db.Text, nullable=True)  # JSON string of image paths
     # Number of images used
@@ -64,6 +69,11 @@ class ChatMessage(db.Model):
     user_input = db.Column(db.Text, nullable=True)
     # Created at timestamp
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+    
+    def generate_content_hash(self):
+        """Generate SHA256 hash of content + session_id + message_type for duplicate detection"""
+        content_for_hash = f"{self.session_id}:{self.message_type}:{self.content}"
+        return hashlib.sha256(content_for_hash.encode('utf-8')).hexdigest()
     
     def to_dict(self):
         created_iso = self.created_at.isoformat(timespec='seconds') + 'Z' if self.created_at else None

@@ -2,6 +2,9 @@ import os
 import uuid
 import logging
 import json
+import time
+import threading
+from collections import defaultdict
 from werkzeug.utils import secure_filename
 from flask import jsonify, request, current_app, Response
 from app.vlm_client import get_vlm_service
@@ -13,6 +16,32 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'mp4', 'mov', 'avi', 'mkv'}
+
+# In-memory cache for request deduplication (hash -> timestamp)
+_request_cache = {}
+_cache_lock = threading.Lock()
+
+def _cleanup_request_cache():
+    """Remove old entries from request cache"""
+    current_time = time.time()
+    with _cache_lock:
+        keys_to_remove = [
+            key for key, timestamp in _request_cache.items()
+            if current_time - timestamp > 60  # Remove entries older than 60 seconds
+        ]
+        for key in keys_to_remove:
+            del _request_cache[key]
+
+def _is_duplicate_request(content_hash):
+    """Check if this request is a duplicate within the last 10 seconds"""
+    current_time = time.time()
+    with _cache_lock:
+        if content_hash in _request_cache:
+            if current_time - _request_cache[content_hash] < 10:  # 10 second window
+                return True
+        
+        _request_cache[content_hash] = current_time
+        return False
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -294,6 +323,8 @@ def register_routes(app):
                     images=json.dumps(image_paths) if image_paths else None,
                     images_used=len(validated_paths)
                 )
+                # Generate and set content hash for user message too
+                user_message.content_hash = user_message.generate_content_hash()
                 db.session.add(user_message)
                 
                 # Update session timestamp
@@ -842,22 +873,65 @@ def register_routes(app):
             user_input = data.get('user_input', '')
             images_used = data.get('images_used', 0)
             
-            # Check for duplicate assistant messages (same content within last 5 seconds)
+            if not content.strip():
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Message content cannot be empty'
+                }), 400
+            
+            # First check: if we have a valid message_id, check if we've already processed it
+            if message_id != 'unknown':
+                existing_message_by_id = ChatMessage.query.filter_by(
+                    id=message_id,
+                    session_id=session_id,
+                    message_type='assistant'
+                ).first()
+                
+                if existing_message_by_id:
+                    logger.warning(f"Message with ID {message_id} already exists in session {session_id}, skipping storage")
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'Message already exists, skipped storage',
+                        'existing_message_id': existing_message_by_id.id
+                    })
+            
+            # Create temporary message to generate content hash
+            temp_message = ChatMessage(
+                session_id=session_id,
+                message_type='assistant',
+                content=content
+            )
+            content_hash = temp_message.generate_content_hash()
+            
+            # Clean up old cache entries periodically
+            _cleanup_request_cache()
+            
+            # Third check: request-level deduplication using in-memory cache
+            if _is_duplicate_request(content_hash):
+                logger.warning(f"Duplicate request detected for session {session_id} (hash: {content_hash[:8]}...), skipping storage")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Duplicate request detected, skipped storage'
+                })
+            
+            # Check for duplicate assistant messages using content hash and recent timestamp
+            # Use SELECT FOR UPDATE to prevent race conditions
             import datetime
-            five_seconds_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=5)
+            thirty_seconds_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
             
             existing_message = ChatMessage.query.filter(
                 ChatMessage.session_id == session_id,
                 ChatMessage.message_type == 'assistant',
-                ChatMessage.content == content,
-                ChatMessage.created_at >= five_seconds_ago
-            ).first()
+                ChatMessage.content_hash == content_hash,
+                ChatMessage.created_at >= thirty_seconds_ago
+            ).with_for_update().first()
             
             if existing_message:
-                logger.warning(f"Duplicate assistant message detected for session {session_id}, skipping storage")
+                logger.warning(f"Duplicate assistant message detected for session {session_id} (hash: {content_hash[:8]}...), skipping storage")
                 return jsonify({
                     'status': 'success',
-                    'message': 'Duplicate message detected, skipped storage'
+                    'message': 'Duplicate message detected, skipped storage',
+                    'duplicate_message_id': existing_message.id
                 })
             
             # Store assistant message in database
@@ -865,9 +939,14 @@ def register_routes(app):
                 session_id=session_id,
                 message_type='assistant',
                 content=content,
+                content_hash=content_hash,
                 images_used=images_used,
                 user_input=user_input
             )
+            
+            # Use the frontend message ID if available and valid
+            if message_id != 'unknown' and message_id.strip():
+                assistant_message.id = message_id
             db.session.add(assistant_message)
             
             # Update session timestamp
