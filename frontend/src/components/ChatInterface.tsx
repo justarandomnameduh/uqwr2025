@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Trash2, FileImage, MessageSquare } from 'lucide-react';
+import { Trash2, FileImage, MessageSquare } from 'lucide-react';
 import type { Message, UploadedImage, ModelInfo } from '../types';
 import { apiService } from '../services/api';
 import { MessageList } from './MessageList';
@@ -31,7 +31,14 @@ export const ChatInterface: React.FC = () => {
         
         const info = await apiService.getModelInfo();
         setModelInfo(info);
-        setCurrentModelId(info.current_model_id || null);
+        
+        // Get current model ID from available models response
+        try {
+          const availableModels = await apiService.getAvailableModels();
+          setCurrentModelId(availableModels.current_model_id || null);
+        } catch (err) {
+          console.error('Failed to get current model ID:', err);
+        }
         setError(null);
       } catch (err) {
         setIsConnected(false);
@@ -130,13 +137,31 @@ export const ChatInterface: React.FC = () => {
           ));
           setError('Failed to generate response. Please try again.');
         },
-        // onDone - finalize the message
+        // onDone - finalize the message and log to backend
         () => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === assistantMessageId 
-              ? { ...msg, isStreaming: false }
-              : msg
-          ));
+          setMessages(prev => {
+            const updatedMessages = prev.map(msg => 
+              msg.id === assistantMessageId 
+                ? { ...msg, isStreaming: false }
+                : msg
+            );
+            
+            // Send the completed assistant message to backend for logging
+            const assistantMsg = updatedMessages.find(msg => msg.id === assistantMessageId);
+            if (assistantMsg) {
+              apiService.logAssistantMessage({
+                message_id: assistantMsg.id,
+                content: assistantMsg.content,
+                timestamp: assistantMsg.timestamp.toISOString(),
+                user_input: text,
+                images_used: imagesToSend.length
+              }).catch(err => {
+                console.error('Failed to log assistant message:', err);
+              });
+            }
+            
+            return updatedMessages;
+          });
         }
       );
     } catch (err: any) {

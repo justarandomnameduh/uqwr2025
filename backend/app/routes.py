@@ -54,7 +54,8 @@ def register_routes(app):
                 'transcription_model_reload': '/transcription/model/reload',
                 'upload_audio': '/transcription/upload',
                 'transcribe': '/transcription/transcribe',
-                'upload_and_transcribe': '/transcription/upload_and_transcribe'
+                'upload_and_transcribe': '/transcription/upload_and_transcribe',
+                'log_assistant_message': '/log/assistant_message'
             }
         })
     
@@ -615,6 +616,52 @@ def register_routes(app):
             
         except Exception as e:
             logger.error(f"Error in upload_and_transcribe: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+    
+    @app.route('/log/assistant_message', methods=['POST'])
+    def log_assistant_message():
+        """
+        Endpoint to receive and log assistant messages from the frontend
+        after text streaming is complete
+        """
+        try:
+            data = request.json
+            if not data:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'JSON data is required'
+                }), 400
+            
+            # Get message data
+            message_id = data.get('message_id', 'unknown')
+            content = data.get('content', '')
+            timestamp = data.get('timestamp', '')
+            user_input = data.get('user_input', '')
+            images_used = data.get('images_used', 0)
+            
+            # Log the assistant message
+            logger.info("=" * 80)
+            logger.info("ASSISTANT MESSAGE RECEIVED")
+            logger.info("=" * 80)
+            logger.info(f"Message ID: {message_id}")
+            logger.info(f"Timestamp: {timestamp}")
+            logger.info(f"User Input: {user_input}")
+            logger.info(f"Images Used: {images_used}")
+            logger.info("-" * 40)
+            logger.info("Assistant Response:")
+            logger.info(content)
+            logger.info("=" * 80)
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Assistant message logged successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error logging assistant message: {e}")
             return jsonify({
                 'status': 'error',
                 'message': str(e)

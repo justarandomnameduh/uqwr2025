@@ -193,6 +193,18 @@ class ApiService {
     });
     return response.data;
   }
+
+  // Log assistant message to backend
+  async logAssistantMessage(messageData: {
+    message_id: string;
+    content: string;
+    timestamp: string;
+    user_input: string;
+    images_used: number;
+  }): Promise<{ status: string; message: string }> {
+    const response = await api.post('/log/assistant_message', messageData);
+    return response.data;
+  }
 }
 
 export const apiService = new ApiService();
