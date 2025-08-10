@@ -10,6 +10,7 @@ interface MessageInputProps {
   onAudioLoadingChange?: (isLoading: boolean) => void;
   isGenerating: boolean;
   disabled: boolean;
+  isWaitingForLogConfirmation?: boolean;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -18,7 +19,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onRemoveSelectedImage,
   onAudioLoadingChange,
   isGenerating,
-  disabled
+  disabled,
+  isWaitingForLogConfirmation = false
 }) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -33,7 +35,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!message.trim() && selectedImages.length === 0) || isGenerating || disabled) return;
+    if ((!message.trim() && selectedImages.length === 0) || isGenerating || disabled || isWaitingForLogConfirmation) return;
 
     onSendMessage(message, selectedImages);
     setMessage('');
@@ -52,7 +54,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }, 100);
   };
 
-  const canSend = (message.trim() || selectedImages.length > 0) && !isGenerating && !disabled;
+  const canSend = (message.trim() || selectedImages.length > 0) && !isGenerating && !disabled && !isWaitingForLogConfirmation;
 
   return (
     <div className="border-t border-gray-200 bg-white p-4">
@@ -86,9 +88,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder={disabled ? "Backend disconnected..." : "Type your message..."}
+            placeholder={
+              disabled ? "Backend disconnected..." :
+              isWaitingForLogConfirmation ? "Waiting for backend confirmation..." :
+              isGenerating ? "AI is thinking..." :
+              "Type your message..."
+            }
             className="w-full resize-none rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-            disabled={disabled || isGenerating}
+            disabled={disabled || isGenerating || isWaitingForLogConfirmation}
             rows={1}
             style={{ minHeight: '48px', maxHeight: '120px' }}
             onKeyDown={(e) => {
@@ -104,7 +111,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           <AudioUpload
             onTranscriptionComplete={handleTranscriptionComplete}
             onLoadingChange={onAudioLoadingChange}
-            disabled={disabled || isGenerating}
+            disabled={disabled || isGenerating || isWaitingForLogConfirmation}
           />
           
           <button

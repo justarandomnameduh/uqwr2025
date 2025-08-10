@@ -14,6 +14,7 @@ export const ChatInterface: React.FC = () => {
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<UploadedImage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isWaitingForLogConfirmation, setIsWaitingForLogConfirmation] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -136,31 +137,50 @@ export const ChatInterface: React.FC = () => {
               : msg
           ));
           setError('Failed to generate response. Please try again.');
+          // Reset states on streaming error
+          setIsGenerating(false);
+          setIsWaitingForLogConfirmation(false);
         },
-        // onDone - finalize the message and log to backend
-        () => {
+        // onDone - finalize the message and wait for log confirmation
+        async () => {
+          // First update the message to stop streaming
+          setMessages(prev => prev.map(msg => 
+            msg.id === assistantMessageId 
+              ? { ...msg, isStreaming: false }
+              : msg
+          ));
+          
+          // Set waiting state (keeps input locked)
+          setIsWaitingForLogConfirmation(true);
+          
+          // Get the final message for logging
           setMessages(prev => {
-            const updatedMessages = prev.map(msg => 
-              msg.id === assistantMessageId 
-                ? { ...msg, isStreaming: false }
-                : msg
-            );
-            
-            // Send the completed assistant message to backend for logging
-            const assistantMsg = updatedMessages.find(msg => msg.id === assistantMessageId);
+            const assistantMsg = prev.find(msg => msg.id === assistantMessageId);
             if (assistantMsg) {
+              // Send the completed assistant message to backend for logging
               apiService.logAssistantMessage({
                 message_id: assistantMsg.id,
                 content: assistantMsg.content,
                 timestamp: assistantMsg.timestamp.toISOString(),
                 user_input: text,
                 images_used: imagesToSend.length
+              }).then(() => {
+                // Backend confirmed receipt - unlock input
+                setIsWaitingForLogConfirmation(false);
+                setIsGenerating(false);
               }).catch(err => {
                 console.error('Failed to log assistant message:', err);
+                // Even if logging fails, unlock the input
+                setIsWaitingForLogConfirmation(false);
+                setIsGenerating(false);
               });
+            } else {
+              // No message found, unlock anyway
+              setIsWaitingForLogConfirmation(false);
+              setIsGenerating(false);
             }
             
-            return updatedMessages;
+            return prev;
           });
         }
       );
@@ -176,8 +196,16 @@ export const ChatInterface: React.FC = () => {
           : msg
       ));
       setError('Failed to generate response. Please try again.');
-    } finally {
+      // Reset states on generation error
       setIsGenerating(false);
+      setIsWaitingForLogConfirmation(false);
+    } finally {
+      // Note: setIsGenerating(false) is now handled in onDone callback after log confirmation
+      // Only set to false here if there was an error during streaming setup
+      if (isWaitingForLogConfirmation) {
+        setIsGenerating(false);
+        setIsWaitingForLogConfirmation(false);
+      }
     }
 
     // Clear selected images after sending
@@ -312,6 +340,7 @@ export const ChatInterface: React.FC = () => {
             onAudioLoadingChange={handleAudioLoadingChange}
             isGenerating={isGenerating}
             disabled={!isConnected || !currentModelId}
+            isWaitingForLogConfirmation={isWaitingForLogConfirmation}
           />
         </div>
 
