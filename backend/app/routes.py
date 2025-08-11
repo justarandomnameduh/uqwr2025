@@ -339,6 +339,10 @@ def register_routes(app):
                     'message': f'Failed to store message: {str(e)}'
                 }), 500
             
+            # Retrieve conversation history for context (after storing current user message)
+            conversation_history = ChatMessage.get_conversation_history(session_id, limit_pairs=5)
+            logger.info(f"Retrieved {len(conversation_history)} conversation pairs for context")
+            
             def generate():
                 try:
                     # Send initial metadata
@@ -348,6 +352,7 @@ def register_routes(app):
                     for token in vlm_service.generate_response_stream(
                         text_input=text_input,
                         image_paths=validated_paths if validated_paths else None,
+                        conversation_history=conversation_history,
                         max_new_tokens=max_new_tokens,
                         temperature=temperature
                     ):

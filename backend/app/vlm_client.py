@@ -143,6 +143,7 @@ class VLMClient:
     def generate_response(self, 
                          text_input,
                          image_paths,
+                         conversation_history=None,
                          max_new_tokens = 512,
                          temperature = 0.7):
         if not self.is_model_loaded or not self.vlm_service:
@@ -150,12 +151,24 @@ class VLMClient:
         
         try:
             with self.lock:
-                response = self.vlm_service.generate_response(
-                    text_input=text_input,
-                    image_paths=image_paths,
-                    max_new_tokens=max_new_tokens,
-                    temperature=temperature
-                )
+                # Note: Not all services support conversation_history in non-streaming mode
+                # Only pass it if the service method supports it
+                try:
+                    response = self.vlm_service.generate_response(
+                        text_input=text_input,
+                        image_paths=image_paths,
+                        conversation_history=conversation_history,
+                        max_new_tokens=max_new_tokens,
+                        temperature=temperature
+                    )
+                except TypeError:
+                    # Fallback for services that don't support conversation_history in non-streaming
+                    response = self.vlm_service.generate_response(
+                        text_input=text_input,
+                        image_paths=image_paths,
+                        max_new_tokens=max_new_tokens,
+                        temperature=temperature
+                    )
                 return response
                 
         except Exception as e:
@@ -165,6 +178,7 @@ class VLMClient:
     def generate_response_stream(self, 
                                text_input,
                                image_paths,
+                               conversation_history=None,
                                max_new_tokens = 512,
                                temperature = 0.7) -> Iterator[str]:
         if not self.is_model_loaded or not self.vlm_service:
@@ -175,6 +189,7 @@ class VLMClient:
                 for token in self.vlm_service.generate_response_stream(
                     text_input=text_input,
                     image_paths=image_paths,
+                    conversation_history=conversation_history,
                     max_new_tokens=max_new_tokens,
                     temperature=temperature
                 ):

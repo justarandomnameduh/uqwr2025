@@ -3,6 +3,7 @@
 import os
 import torch
 import gc
+import json
 import logging
 from typing import List, Optional, Dict, Any, Iterator
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, TextIteratorStreamer
@@ -10,6 +11,7 @@ from qwen_vl_utils import process_vision_info
 from PIL import Image
 import time
 from threading import Thread
+from flask import current_app
 from utils.common import preprocess_image_in_memory
 
 logger = logging.getLogger(__name__)
@@ -116,9 +118,10 @@ class WisWheat_GwenService:
     def _create_messages(self, 
                         text_input: str, 
                         image_paths: Optional[List[str]] = None,
+                        conversation_history: Optional[List[tuple]] = None,
                         include_system_prompt: bool = False) -> tuple:
         """
-        Create messages in Qwen format with user content and return processed images.
+        Create messages in Qwen format with user content and conversation history.
         Returns: (messages, processed_images_for_cleanup)
         """
         # Start with system message if requested
@@ -128,6 +131,43 @@ class WisWheat_GwenService:
                 "role": "system",
                 "content": self.system_prompt
             })
+        
+        # Add conversation history for context
+        if conversation_history:
+            for user_msg, assistant_msg in conversation_history:
+                # Add historical user message
+                historical_user_content = [{"type": "text", "text": user_msg.content}]
+                
+                # Add historical images if any
+                if user_msg.images:
+                    try:
+                        historical_image_paths = json.loads(user_msg.images)
+                        for img_path in historical_image_paths[:self.max_images_per_request]:
+                            full_img_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_path)
+                            if os.path.exists(full_img_path):
+                                try:
+                                    processed_image = preprocess_image_in_memory(full_img_path, self.max_image_size)
+                                    historical_user_content.insert(0, {  # Insert images before text
+                                        "type": "image",
+                                        "image": processed_image
+                                    })
+                                except Exception as e:
+                                    logger.warning(f"Failed to process historical image {full_img_path}: {e}")
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to decode images JSON for historical message: {user_msg.images}")
+                
+                messages.append({
+                    "role": "user",
+                    "content": historical_user_content
+                })
+                
+                # Add historical assistant message
+                messages.append({
+                    "role": "assistant", 
+                    "content": assistant_msg.content
+                })
+            
+            logger.info(f"Added {len(conversation_history)} conversation pairs as context")
         
         # Create user message content
         user_content = []
@@ -169,6 +209,7 @@ class WisWheat_GwenService:
     def generate_response(self, 
                          text_input: str, 
                          image_paths: Optional[List[str]] = None,
+                         conversation_history: Optional[List[tuple]] = None,
                          max_new_tokens: int = 512,
                          temperature: float = 0.7,
                          do_sample: bool = True) -> str:
@@ -185,7 +226,7 @@ class WisWheat_GwenService:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            messages, _ = self._create_messages(text_input, image_paths, include_system_prompt=False)
+            messages, _ = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=False)
             
             # Apply chat template to get text
             text = self.processor.apply_chat_template(
@@ -264,6 +305,7 @@ class WisWheat_GwenService:
     def generate_response_stream(self, 
                                text_input: str, 
                                image_paths: Optional[List[str]] = None,
+                               conversation_history: Optional[List[tuple]] = None,
                                max_new_tokens: int = 512,
                                temperature: float = 0.7,
                                do_sample: bool = True) -> Iterator[str]:
@@ -276,7 +318,7 @@ class WisWheat_GwenService:
         
         try:
             # Use consolidated message creation with system prompt for streaming
-            messages, _ = self._create_messages(text_input, image_paths, include_system_prompt=True)
+            messages, _ = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=True)
             
             # Prepare inputs using the processor
             text_prompt = self.processor.apply_chat_template(

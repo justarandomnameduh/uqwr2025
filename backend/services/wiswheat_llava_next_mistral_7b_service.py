@@ -76,9 +76,11 @@ class WisWheat_LLavaNext_Mistral_7BService:
     def _create_messages(self, 
                          text_input: str, 
                          image_paths: Optional[List[str]] = None,
+                         conversation_history: Optional[List[tuple]] = None,
                          include_system_prompt: bool = False) -> tuple:
         """
         Create messages in LLaVA-Next format using proper conversation structure.
+        Includes conversation history as context in text format.
         Returns: (conversation, processed_images)
         """
         processed_images = []
@@ -106,10 +108,23 @@ class WisWheat_LLavaNext_Mistral_7BService:
             
             logger.info(f"Total processed images: {len(processed_images)}")
         
-        # Add system prompt if requested (for LLaVA, we include it in the text)
+        # Build conversation context from history (LLaVA format with combined text)
         enhanced_text = text_input
+        if conversation_history:
+            context_parts = []
+            for user_msg, assistant_msg in conversation_history:
+                context_parts.append(f"Previous conversation:\nUser: {user_msg.content}")
+                context_parts.append(f"Assistant: {assistant_msg.content}")
+            context_text = "\n\n".join(context_parts)
+            enhanced_text = f"{context_text}\n\nCurrent conversation:\nUser: {text_input}"
+            logger.info(f"Added {len(conversation_history)} conversation pairs as context")
+        
+        # Add system prompt if requested (for LLaVA, we include it in the text)
         if include_system_prompt:
-            enhanced_text = f"{self.system_prompt}\n\n{text_input}"
+            if conversation_history:
+                enhanced_text = f"{self.system_prompt}\n\n{enhanced_text}"
+            else:
+                enhanced_text = f"{self.system_prompt}\n\n{text_input}"
         
         # Add text to content
         if processed_images:
@@ -134,6 +149,7 @@ class WisWheat_LLavaNext_Mistral_7BService:
     def _create_messages_alternative(self, 
                          text_input: str, 
                          image_paths: Optional[List[str]] = None,
+                         conversation_history: Optional[List[tuple]] = None,
                          include_system_prompt: bool = False) -> tuple:
         """
         Alternative multi-image conversation structure based on LLaVA-NeXT-Interleave approach.
@@ -161,12 +177,22 @@ class WisWheat_LLavaNext_Mistral_7BService:
                     except Exception as e:
                         logger.warning(f"Failed to process image {img_path}: {e}")
             
-            # Add main question at the end
-            content.append({"type": "text", "text": f"\n\nBased on all {len(processed_images)} images above, {text_input}"})
+            # Build conversation context and add main question at the end
+            final_text = text_input
+            if conversation_history:
+                context_parts = []
+                for user_msg, assistant_msg in conversation_history:
+                    context_parts.append(f"Previous conversation:\nUser: {user_msg.content}")
+                    context_parts.append(f"Assistant: {assistant_msg.content}")
+                context_text = "\n\n".join(context_parts)
+                final_text = f"{context_text}\n\nCurrent conversation:\nUser: {text_input}"
+                logger.info(f"Added {len(conversation_history)} conversation pairs as context (alternative structure)")
+            
+            content.append({"type": "text", "text": f"\n\nBased on all {len(processed_images)} images above, {final_text}"})
             
         else:
             # Single image or no image - use standard structure
-            return self._create_messages(text_input, image_paths, include_system_prompt)
+            return self._create_messages(text_input, image_paths, conversation_history, include_system_prompt)
 
         conversation = [
             {
@@ -181,6 +207,7 @@ class WisWheat_LLavaNext_Mistral_7BService:
     def generate_response(self, 
                          text_input: str, 
                          image_paths: Optional[List[str]] = None,
+                         conversation_history: Optional[List[tuple]] = None,
                          max_new_tokens: int = 512,
                          temperature: float = 0.7,
                          do_sample: bool = True,
@@ -191,10 +218,10 @@ class WisWheat_LLavaNext_Mistral_7BService:
         
         # Choose conversation structure based on number of images
         if image_paths and len(image_paths) > 1 and use_alternative_structure:
-            conversation, processed_images = self._create_messages_alternative(text_input, image_paths, include_system_prompt=True)
+            conversation, processed_images = self._create_messages_alternative(text_input, image_paths, conversation_history, include_system_prompt=True)
             logger.info("Using alternative multi-image structure")
         else:
-            conversation, processed_images = self._create_messages(text_input, image_paths, include_system_prompt=True)
+            conversation, processed_images = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=True)
             logger.info("Using standard conversation structure")
         
         # Apply chat template to get the properly formatted prompt
@@ -265,6 +292,7 @@ class WisWheat_LLavaNext_Mistral_7BService:
     def generate_response_stream(self, 
                                text_input: str, 
                                image_paths: Optional[List[str]] = None,
+                               conversation_history: Optional[List[tuple]] = None,
                                max_new_tokens: int = 512,
                                temperature: float = 0.7,
                                do_sample: bool = True,
@@ -275,10 +303,10 @@ class WisWheat_LLavaNext_Mistral_7BService:
         
         # Choose conversation structure based on number of images
         if image_paths and len(image_paths) > 1 and use_alternative_structure:
-            conversation, processed_images = self._create_messages_alternative(text_input, image_paths, include_system_prompt=True)
+            conversation, processed_images = self._create_messages_alternative(text_input, image_paths, conversation_history, include_system_prompt=True)
             logger.info("Using alternative multi-image structure for streaming")
         else:
-            conversation, processed_images = self._create_messages(text_input, image_paths, include_system_prompt=True)
+            conversation, processed_images = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=True)
             logger.info("Using standard conversation structure for streaming")
         
         # Apply chat template to get the properly formatted prompt

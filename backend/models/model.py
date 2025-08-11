@@ -90,3 +90,44 @@ class ChatMessage(db.Model):
     
     def __repr__(self):
         return f'<ChatMessage {self.id} {self.session_id} {self.message_type}>'
+    
+    @staticmethod
+    def get_conversation_history(session_id: str, limit_pairs: int = 5):
+        """
+        Retrieve the latest conversation history for a session.
+        Returns a list of message pairs (user, assistant) for context.
+        
+        Args:
+            session_id: The session ID to get history for
+            limit_pairs: Number of conversation pairs to retrieve (default: 5)
+            
+        Returns:
+            List of tuples (user_message, assistant_message) ordered from oldest to newest
+        """
+        # Get the latest messages for this session, excluding the current user message
+        # that was just added (we want previous conversation history)
+        messages = ChatMessage.query.filter_by(session_id=session_id)\
+                                   .order_by(ChatMessage.created_at.desc())\
+                                   .limit(limit_pairs * 2)\
+                                   .all()
+        
+        # Reverse to get chronological order (oldest first)
+        messages.reverse()
+        
+        # Group messages into conversation pairs
+        conversation_pairs = []
+        i = 0
+        while i < len(messages) - 1:  # -1 because we need pairs
+            current_msg = messages[i]
+            next_msg = messages[i + 1] if i + 1 < len(messages) else None
+            
+            # Look for user-assistant pairs
+            if (current_msg.message_type == 'user' and 
+                next_msg and next_msg.message_type == 'assistant'):
+                conversation_pairs.append((current_msg, next_msg))
+                i += 2  # Skip both messages since we paired them
+            else:
+                i += 1  # Skip this message and try the next one
+        
+        # Return the most recent pairs up to the limit, but maintain chronological order
+        return conversation_pairs[-limit_pairs:] if len(conversation_pairs) > limit_pairs else conversation_pairs
