@@ -4,6 +4,16 @@ import gc
 import logging
 from typing import List, Optional, Dict, Any, Iterator
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, TextIteratorStreamer
+
+# Compatibility patch for PyTorch versions that don't have torch.compiler.is_compiling
+if hasattr(torch, 'compiler') and not hasattr(torch.compiler, 'is_compiling'):
+    # Add the missing is_compiling function for compatibility
+    def _is_compiling():
+        return False
+    torch.compiler.is_compiling = _is_compiling
+    logger = logging.getLogger(__name__)
+    logger.info("Applied compatibility patch for torch.compiler.is_compiling")
+
 from PIL import Image
 from threading import Thread
 from utils.common import preprocess_image_in_memory
@@ -211,7 +221,8 @@ class WisWheat_LLavaNext_Mistral_7BService:
                          max_new_tokens: int = 512,
                          temperature: float = 0.7,
                          do_sample: bool = True,
-                         use_alternative_structure: bool = True) -> str:
+                         use_alternative_structure: bool = True,
+                         upload_folder: Optional[str] = None) -> str:
         
         if not self.is_loaded:
             raise RuntimeError("LLavaNext-Mistral-7B model not loaded. Please call load_model() first.")
@@ -227,7 +238,8 @@ class WisWheat_LLavaNext_Mistral_7BService:
         # Apply chat template to get the properly formatted prompt
         prompt = self.processor.apply_chat_template(
             conversation, 
-            add_generation_prompt=True
+            add_generation_prompt=True,
+            add_vision_id=True
         )
         
         logger.info(f"Generated prompt length: {len(prompt)} characters")
@@ -296,7 +308,8 @@ class WisWheat_LLavaNext_Mistral_7BService:
                                max_new_tokens: int = 512,
                                temperature: float = 0.7,
                                do_sample: bool = True,
-                               use_alternative_structure: bool = True) -> Iterator[str]:
+                               use_alternative_structure: bool = True,
+                               upload_folder: Optional[str] = None) -> Iterator[str]:
         
         if not self.is_loaded:
             raise RuntimeError("LLavaNext-Mistral-7B model not loaded. Please call load_model() first.")    
@@ -312,7 +325,8 @@ class WisWheat_LLavaNext_Mistral_7BService:
         # Apply chat template to get the properly formatted prompt
         prompt = self.processor.apply_chat_template(
             conversation, 
-            add_generation_prompt=True
+            add_generation_prompt=True,
+            add_vision_id=True
         )
         
         # Process inputs - pass images separately if they exist  
