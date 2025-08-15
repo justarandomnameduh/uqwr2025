@@ -92,7 +92,7 @@ class ChatMessage(db.Model):
         return f'<ChatMessage {self.id} {self.session_id} {self.message_type}>'
     
     @staticmethod
-    def get_conversation_history(session_id: str, limit_pairs: int = 5):
+    def get_conversation_history(session_id: str, limit_pairs: int = 5, exclude_latest_user: bool = False):
         """
         Retrieve the latest conversation history for a session.
         Returns a list of message pairs (user, assistant) for context.
@@ -100,16 +100,26 @@ class ChatMessage(db.Model):
         Args:
             session_id: The session ID to get history for
             limit_pairs: Number of conversation pairs to retrieve (default: 5)
+            exclude_latest_user: Whether to exclude the most recent user message (default: False)
             
         Returns:
             List of tuples (user_message, assistant_message) ordered from oldest to newest
         """
-        # Get the latest messages for this session, excluding the current user message
-        # that was just added (we want previous conversation history)
-        messages = ChatMessage.query.filter_by(session_id=session_id)\
-                                   .order_by(ChatMessage.created_at.desc())\
-                                   .limit(limit_pairs * 2)\
-                                   .all()
+        # Get all messages for this session, ordered by creation time (newest first)
+        query = ChatMessage.query.filter_by(session_id=session_id)\
+                                 .order_by(ChatMessage.created_at.desc())
+        
+        # If we want to exclude the latest user message (e.g., when getting context for response generation)
+        if exclude_latest_user:
+            # Get all messages and skip the first one if it's a user message
+            all_messages = query.all()
+            if all_messages and all_messages[0].message_type == 'user':
+                messages = all_messages[1:]  # Skip the latest user message
+            else:
+                messages = all_messages
+        else:
+            # Limit to avoid getting too many messages
+            messages = query.limit(limit_pairs * 2 + 2).all()  # +2 for safety buffer
         
         # Reverse to get chronological order (oldest first)
         messages.reverse()

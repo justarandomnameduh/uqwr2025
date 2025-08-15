@@ -243,12 +243,18 @@ def register_routes(app):
                 else:
                     logger.warning(f"Image not found: {path}")
             
+            # Retrieve conversation history for context
+            conversation_history = ChatMessage.get_conversation_history(session_id, limit_pairs=5, exclude_latest_user=False)
+            logger.info(f"Retrieved {len(conversation_history)} conversation pairs for context")
+            
             # Generate response
             response = vlm_service.generate_response(
                 text_input=text_input,
                 image_paths=validated_paths if validated_paths else None,
+                conversation_history=conversation_history,
                 max_new_tokens=max_new_tokens,
-                temperature=temperature
+                temperature=temperature,
+                upload_folder=current_app.config['UPLOAD_FOLDER']
             )
             
             return jsonify({
@@ -340,8 +346,12 @@ def register_routes(app):
                 }), 500
             
             # Retrieve conversation history for context (after storing current user message)
-            conversation_history = ChatMessage.get_conversation_history(session_id, limit_pairs=5)
+            # Exclude the latest user message since we just added it and want previous context only
+            conversation_history = ChatMessage.get_conversation_history(session_id, limit_pairs=5, exclude_latest_user=True)
             logger.info(f"Retrieved {len(conversation_history)} conversation pairs for context")
+            
+            # Store upload folder outside the generator to avoid application context issues
+            upload_folder = current_app.config['UPLOAD_FOLDER']
             
             def generate():
                 try:
@@ -354,7 +364,8 @@ def register_routes(app):
                         image_paths=validated_paths if validated_paths else None,
                         conversation_history=conversation_history,
                         max_new_tokens=max_new_tokens,
-                        temperature=temperature
+                        temperature=temperature,
+                        upload_folder=upload_folder
                     ):
                         yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
                     

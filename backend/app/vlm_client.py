@@ -145,7 +145,8 @@ class VLMClient:
                          image_paths,
                          conversation_history=None,
                          max_new_tokens = 512,
-                         temperature = 0.7):
+                         temperature = 0.7,
+                         upload_folder = None):
         if not self.is_model_loaded or not self.vlm_service:
             raise RuntimeError("No model loaded. Please load a model first.")
         
@@ -159,7 +160,8 @@ class VLMClient:
                         image_paths=image_paths,
                         conversation_history=conversation_history,
                         max_new_tokens=max_new_tokens,
-                        temperature=temperature
+                        temperature=temperature,
+                        upload_folder=upload_folder
                     )
                 except TypeError:
                     # Fallback for services that don't support conversation_history in non-streaming
@@ -167,7 +169,8 @@ class VLMClient:
                         text_input=text_input,
                         image_paths=image_paths,
                         max_new_tokens=max_new_tokens,
-                        temperature=temperature
+                        temperature=temperature,
+                        upload_folder=upload_folder
                     )
                 return response
                 
@@ -180,7 +183,8 @@ class VLMClient:
                                image_paths,
                                conversation_history=None,
                                max_new_tokens = 512,
-                               temperature = 0.7) -> Iterator[str]:
+                               temperature = 0.7,
+                               upload_folder = None) -> Iterator[str]:
         if not self.is_model_loaded or not self.vlm_service:
             raise RuntimeError("No model loaded. Please load a model first.")
         
@@ -191,7 +195,8 @@ class VLMClient:
                     image_paths=image_paths,
                     conversation_history=conversation_history,
                     max_new_tokens=max_new_tokens,
-                    temperature=temperature
+                    temperature=temperature,
+                    upload_folder=upload_folder
                 ):
                     yield token
                 

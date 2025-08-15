@@ -7,6 +7,16 @@ import json
 import logging
 from typing import List, Optional, Dict, Any, Iterator
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, TextIteratorStreamer
+
+# Compatibility patch for PyTorch versions that don't have torch.compiler.is_compiling
+if hasattr(torch, 'compiler') and not hasattr(torch.compiler, 'is_compiling'):
+    # Add the missing is_compiling function for compatibility
+    def _is_compiling():
+        return False
+    torch.compiler.is_compiling = _is_compiling
+    logger = logging.getLogger(__name__)
+    logger.info("Applied compatibility patch for torch.compiler.is_compiling")
+
 from qwen_vl_utils import process_vision_info
 from PIL import Image
 import time
@@ -91,7 +101,8 @@ class Qwen2_5_7BService:
                         text_input: str, 
                         image_paths: Optional[List[str]] = None,
                         conversation_history: Optional[List[tuple]] = None,
-                        include_system_prompt: bool = False) -> tuple:
+                        include_system_prompt: bool = False,
+                        upload_folder: Optional[str] = None) -> tuple:
         """
         Create messages in Qwen format with user content and conversation history.
         Returns: (messages, processed_images_for_cleanup)
@@ -111,11 +122,11 @@ class Qwen2_5_7BService:
                 historical_user_content = [{"type": "text", "text": user_msg.content}]
                 
                 # Add historical images if any
-                if user_msg.images:
+                if user_msg.images and upload_folder:
                     try:
                         historical_image_paths = json.loads(user_msg.images)
                         for img_path in historical_image_paths[:self.max_images_per_request]:
-                            full_img_path = os.path.join(current_app.config['UPLOAD_FOLDER'], img_path)
+                            full_img_path = os.path.join(upload_folder, img_path)
                             if os.path.exists(full_img_path):
                                 try:
                                     processed_image = preprocess_image_in_memory(full_img_path, self.max_image_size)
@@ -184,20 +195,22 @@ class Qwen2_5_7BService:
                          conversation_history: Optional[List[tuple]] = None,
                          max_new_tokens: int = 512,
                          temperature: float = 0.7,
-                         do_sample: bool = True) -> str:
+                         do_sample: bool = True,
+                         upload_folder: Optional[str] = None) -> str:
         
         if not self.is_loaded:
             raise RuntimeError("Qwen2.5-7B model not loaded. Please call load_model() first.")
         
         try:
             
-            messages, _ = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=False)
+            messages, _ = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=True, upload_folder=upload_folder)
             
             # Apply chat template to get text
             text = self.processor.apply_chat_template(
                 messages, 
                 tokenize=False, 
-                add_generation_prompt=True
+                add_generation_prompt=True,
+                add_vision_id=True  # Add vision IDs like "Picture 1:", "Picture 2:", etc.
             )
             
             # Process vision information
@@ -270,7 +283,8 @@ class Qwen2_5_7BService:
                                conversation_history: Optional[List[tuple]] = None,
                                max_new_tokens: int = 512,
                                temperature: float = 0.7,
-                               do_sample: bool = True) -> Iterator[str]:
+                               do_sample: bool = True,
+                               upload_folder: Optional[str] = None) -> Iterator[str]:
         """
         Generate streaming response using TextIteratorStreamer.
         Yields tokens as they are generated.
@@ -280,11 +294,12 @@ class Qwen2_5_7BService:
         
         try:
             # Use consolidated message creation with system prompt for streaming
-            messages, _ = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=True)
+            messages, _ = self._create_messages(text_input, image_paths, conversation_history, include_system_prompt=True, upload_folder=upload_folder)
             
             # Prepare inputs using the processor
             text_prompt = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+                messages, tokenize=False, add_generation_prompt=True,
+                add_vision_id=True  # Add vision IDs like "Picture 1:", "Picture 2:", etc.
             )
             
             image_inputs, video_inputs = process_vision_info(messages)
